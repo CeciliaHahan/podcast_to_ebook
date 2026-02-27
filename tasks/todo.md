@@ -2,11 +2,11 @@
 
 ## Plan
 
-- [ ] Verify current repository state for GitHub push readiness.
-- [ ] Initialize Git (if needed) and create a baseline commit for this project.
-- [ ] Configure `origin` remote to the target GitHub repository.
-- [ ] Push the current branch to GitHub and confirm remote tracking.
-- [ ] Update this file's Review section after implementation.
+- [x] Verify current repository state for GitHub push readiness.
+- [x] Initialize Git (if needed) and create a baseline commit for this project.
+- [x] Configure `origin` remote to the target GitHub repository.
+- [x] Push the current branch to GitHub and confirm remote tracking.
+- [x] Update this file's Review section after implementation.
 - [x] Implement a shared booklet intermediate model from transcript input.
 - [x] Render Markdown from the shared model with chapterized booklet structure.
 - [x] Render PDF from the same model (same section order and headings).
@@ -74,6 +74,7 @@
 - [x] Added optional LLM JSON generation module for booklet content with auto-fallback.
 - [x] Added `OPENAI_*` config support and verified pipeline stability without key.
 - [x] Added `OPENROUTER_*` config aliases so provider naming is explicit for OpenRouter usage.
+- [x] Initialized this project as a local Git repository and pushed `main` to GitHub (`CeciliaHahan/podcast_to_ebook`).
 
 ## Review
 
@@ -106,6 +107,9 @@
 - Ensured no-regression fallback path: when `OPENAI_API_KEY` is empty or API call fails, generation continues with deterministic logic.
 - Verified with `npm run typecheck` and `./scripts/dev-smoke.sh` after integration.
 - Added provider-native env support: `OPENROUTER_API_KEY` / `OPENROUTER_BASE_URL` / `OPENROUTER_MODEL` (and timeout/input limits), with automatic fallback to existing `OPENAI_*` names.
+- Initialized Git in project root, created baseline commit, and configured `origin` to `git@github.com:CeciliaHahan/podcast_to_ebook.git`.
+- Resolved first-push divergence with remote `main` by rebasing and handling `README.md` add/add conflict.
+- Successfully pushed local `main` to GitHub and set upstream tracking (`main -> origin/main`).
 
 ### Notes
 
