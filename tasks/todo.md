@@ -1,7 +1,22 @@
 # TODO
 
+## Current Task: Transcript Chain Test (2026-02-27)
+
+### Plan
+
+- [x] Confirm local backend/dev dependencies are up and `healthz` is reachable.
+- [x] Execute transcript chain smoke test via `./scripts/dev-smoke.sh`.
+- [x] Validate job lifecycle output (`created -> processing -> succeeded`), artifacts URLs, and events.
+- [x] Record test evidence and outcome in `Review` section.
+
 ## Plan
 
+- [x] Add ignore rules for local/generated artifacts that should not be public.
+- [x] Remove tracked `backend/.dev-artifacts` files from the current branch state.
+- [x] Rewrite Git history to purge `backend/.dev-artifacts` from all commits.
+- [x] Update Git author email to GitHub noreply for future commits.
+- [x] Force-push rewritten history to GitHub and verify remote state.
+- [x] Update this file's Review section after implementation.
 - [x] Verify current repository state for GitHub push readiness.
 - [x] Initialize Git (if needed) and create a baseline commit for this project.
 - [x] Configure `origin` remote to the target GitHub repository.
@@ -75,8 +90,23 @@
 - [x] Added `OPENAI_*` config support and verified pipeline stability without key.
 - [x] Added `OPENROUTER_*` config aliases so provider naming is explicit for OpenRouter usage.
 - [x] Initialized this project as a local Git repository and pushed `main` to GitHub (`CeciliaHahan/podcast_to_ebook`).
+- [x] Removed `backend/.dev-artifacts` from tracked state and rewrote branch history to keep generated artifacts out of public history.
+- [x] Switched Git commit email to GitHub noreply for future commits.
 
 ## Review
+
+### Transcript Chain Test (2026-02-27)
+
+- Verified `/healthz` returns `{"ok":true,"service":"podcasts-to-ebooks-backend"}`.
+- Executed transcript smoke path using `./scripts/dev-smoke.sh`.
+- Observed smoke job `job_f74306cf4f01631c` creation at `2026-02-27T07:51:44.497Z` and stage progression through `input_validation -> normalization -> chapter_structuring -> render_epub -> render_pdf -> render_md -> packaging`.
+- Confirmed final job status reached `succeeded` at `2026-02-27T07:52:00.552Z`.
+- Confirmed artifact listing returns `epub/pdf/md` for `job_f74306cf4f01631c`.
+- Confirmed all artifact download URLs are reachable with `HTTP/1.1 200 OK` and correct content types:
+  - `application/epub+zip`
+  - `application/pdf`
+  - `text/markdown; charset=utf-8`
+- Noted current smoke script behavior: fixed polling window may stop before `succeeded`, which can transiently produce `JOB_NOT_READY` for artifacts even when job completes moments later.
 
 ### Summary
 
@@ -110,6 +140,9 @@
 - Initialized Git in project root, created baseline commit, and configured `origin` to `git@github.com:CeciliaHahan/podcast_to_ebook.git`.
 - Resolved first-push divergence with remote `main` by rebasing and handling `README.md` add/add conflict.
 - Successfully pushed local `main` to GitHub and set upstream tracking (`main -> origin/main`).
+- Added `.gitignore` rule for `backend/.dev-artifacts/` and removed tracked generated artifacts from `main`.
+- Rewrote local `main` history to purge `backend/.dev-artifacts` from commit objects and rewrote prior commit email identity to GitHub noreply.
+- Updated local Git identity to `CeciliaHahan@users.noreply.github.com` for all future commits.
 
 ### Notes
 
