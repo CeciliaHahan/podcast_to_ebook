@@ -40,6 +40,7 @@ echo "Installing backend dependencies..."
 (
   cd "$BACKEND_DIR"
   npm install >/dev/null
+  npm run build >/dev/null
 )
 
 if lsof -nP -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1; then
@@ -48,7 +49,7 @@ else
   echo "Starting backend..."
   (
     cd "$BACKEND_DIR"
-    nohup npm run dev >/tmp/podcasts_to_ebooks_backend.log 2>&1 &
+    nohup node dist/index.js </dev/null >/tmp/podcasts_to_ebooks_backend.log 2>&1 &
   )
   sleep 1
 fi

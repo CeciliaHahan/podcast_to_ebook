@@ -3,7 +3,7 @@ import { config } from "./config.js";
 
 const app = createApp();
 
-app.listen(config.port, () => {
+app.listen(config.port, config.host, () => {
   // eslint-disable-next-line no-console
-  console.log(`Backend listening on http://localhost:${config.port}`);
+  console.log(`Backend listening on http://${config.host}:${config.port}`);
 });

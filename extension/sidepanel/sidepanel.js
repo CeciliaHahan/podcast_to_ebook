@@ -31,6 +31,7 @@ const elements = {
 };
 
 let pollTimer = null;
+let didAutoSwitchBaseUrl = false;
 
 function autoGenerateTitle(transcript) {
   const body = String(transcript || "").replace(/^.*?transcript\s*:/is, "");
@@ -139,6 +140,59 @@ async function getSettings() {
   return stored[STORAGE_KEY] || DEFAULTS;
 }
 
+function normalizeApiBaseUrl(input) {
+  const raw = String(input || "").trim();
+  const fallback = DEFAULTS.apiBaseUrl;
+  return (raw || fallback).replace(/\/$/, "");
+}
+
+function buildApiBaseCandidates(inputBaseUrl) {
+  const primary = normalizeApiBaseUrl(inputBaseUrl);
+  const out = [primary];
+  try {
+    const parsed = new URL(primary);
+    if ((parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.port === "8080") {
+      if (parsed.hostname === "localhost") {
+        const alt = new URL(parsed.toString());
+        alt.hostname = "127.0.0.1";
+        out.push(alt.toString().replace(/\/$/, ""));
+      } else if (parsed.hostname === "127.0.0.1") {
+        const alt = new URL(parsed.toString());
+        alt.hostname = "localhost";
+        out.push(alt.toString().replace(/\/$/, ""));
+      }
+    }
+  } catch (_error) {
+    // Keep primary only; fetch will surface invalid URL errors.
+  }
+  return Array.from(new Set(out));
+}
+
+function isLikelyNetworkFetchError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (error.name === "TypeError") {
+    return true;
+  }
+  return /(failed to fetch|fetch failed|networkerror|load failed|net::)/i.test(error.message);
+}
+
+function formatNetworkFetchMessage(path, triedBaseUrls, error) {
+  const triedLines = triedBaseUrls.map((baseUrl) => `- ${baseUrl}${path}`).join("\n");
+  const browserMessage = error instanceof Error ? error.message : "Failed to fetch";
+  return [
+    "无法连接到后端 API（网络请求失败）。",
+    "已尝试请求：",
+    triedLines,
+    "排查建议：",
+    "1) 确认后端在运行：打开 http://localhost:8080/healthz，应该返回 ok。",
+    "2) 检查 API Base URL（建议 http://localhost:8080）。",
+    "3) 检查 Token 是否有效（例如 dev:cecilia@example.com）。",
+    `浏览器错误：${browserMessage}`,
+  ].join("\n");
+}
+
 async function storageGet(keys) {
   if (globalThis.chrome?.storage?.local) {
     return chrome.storage.local.get(keys);
@@ -171,26 +225,51 @@ async function storageSet(value) {
 
 async function apiRequest(path, method, body) {
   const settings = await getSettings();
-  const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, "")}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.token}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    let payload = null;
+  const baseCandidates = buildApiBaseCandidates(settings.apiBaseUrl);
+  let lastNetworkError = null;
+
+  for (let index = 0; index < baseCandidates.length; index += 1) {
+    const baseUrl = baseCandidates[index];
     try {
-      payload = await response.json();
-    } catch (_error) {
-      payload = null;
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.token}`,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_error) {
+          payload = null;
+        }
+        const code = payload?.error?.code || "UNKNOWN_ERROR";
+        const message = payload?.error?.message || `HTTP ${response.status}`;
+        throw new Error(`${code}: ${message}`);
+      }
+
+      if (index > 0 && !didAutoSwitchBaseUrl) {
+        didAutoSwitchBaseUrl = true;
+        const nextSettings = { ...settings, apiBaseUrl: baseUrl };
+        await storageSet({ [STORAGE_KEY]: nextSettings });
+        elements.apiBaseUrl.value = baseUrl;
+        showSettingsFeedback(`Connected via ${baseUrl}. API Base URL auto-updated.`);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (isLikelyNetworkFetchError(error)) {
+        lastNetworkError = error;
+        continue;
+      }
+      throw error;
     }
-    const code = payload?.error?.code || "UNKNOWN_ERROR";
-    const message = payload?.error?.message || `HTTP ${response.status}`;
-    throw new Error(`${code}: ${message}`);
   }
-  return response.json();
+
+  throw new Error(formatNetworkFetchMessage(path, baseCandidates, lastNetworkError));
 }
 
 async function fetchStatus(jobId) {

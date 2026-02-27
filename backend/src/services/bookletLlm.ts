@@ -1,17 +1,46 @@
 import { config } from "../config.js";
 import type { SourceType } from "../types/domain.js";
 
+const SYSTEM_PROMPT = [
+  "You are an editorial assistant that converts a podcast transcript into a high-quality Chinese knowledge booklet draft.",
+  "Your priorities, in order: (1) faithfulness to transcript, (2) clarity and structure, (3) actionable takeaways.",
+  "Return valid JSON only. No markdown, no commentary, no extra keys.",
+  "Never invent facts, quotes, timestamps, or speakers.",
+  'If transcript evidence is insufficient, use the literal phrase: "未在原文中明确说明".',
+  "Quotes must remain faithful to transcript wording; do not paraphrase inside quote text.",
+  "Use clear modern Chinese, avoid influencer tone, and avoid unnecessary English.",
+].join(" ");
+
 type LlmBookletQuote = {
   speaker: string;
   timestamp: string;
   text: string;
 };
 
+type LlmChapterExplanation = {
+  background: string;
+  coreConcept: string;
+  judgmentFramework: string;
+  commonMisunderstanding: string;
+};
+
 type LlmBookletChapter = {
   title: string;
   points: string[];
   quotes: LlmBookletQuote[];
+  explanation: LlmChapterExplanation;
   actions: string[];
+};
+
+type LlmChapterPlanHint = {
+  chapterIndex: number;
+  title: string;
+  range: string;
+  segmentIds: string[];
+  intent: string;
+  signals: string[];
+  contextExcerpt: string;
+  evidenceAnchors: LlmBookletQuote[];
 };
 
 export type LlmBookletDraft = {
@@ -67,6 +96,26 @@ function readQuoteList(value: unknown, maxItems: number): LlmBookletQuote[] {
   return quotes;
 }
 
+function readChapterExplanation(value: unknown): LlmChapterExplanation {
+  if (!value || typeof value !== "object") {
+    return {
+      background: "",
+      coreConcept: "",
+      judgmentFramework: "",
+      commonMisunderstanding: "",
+    };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    background: typeof record.background === "string" ? cleanText(record.background, 220) : "",
+    coreConcept: typeof record.coreConcept === "string" ? cleanText(record.coreConcept, 220) : "",
+    judgmentFramework:
+      typeof record.judgmentFramework === "string" ? cleanText(record.judgmentFramework, 220) : "",
+    commonMisunderstanding:
+      typeof record.commonMisunderstanding === "string" ? cleanText(record.commonMisunderstanding, 220) : "",
+  };
+}
+
 function readDraftFromUnknown(value: unknown): LlmBookletDraft | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -83,14 +132,25 @@ function readDraftFromUnknown(value: unknown): LlmBookletDraft | null {
     const title = typeof chapter.title === "string" ? cleanText(chapter.title, 40) : "";
     const points = readStringList(chapter.points, 5, 180);
     const quotes = readQuoteList(chapter.quotes, 4);
+    const explanation = readChapterExplanation(chapter.explanation);
     const actions = readStringList(chapter.actions, 4, 120);
-    if (!title && points.length === 0 && quotes.length === 0 && actions.length === 0) {
+    if (
+      !title &&
+      points.length === 0 &&
+      quotes.length === 0 &&
+      actions.length === 0 &&
+      !explanation.background &&
+      !explanation.coreConcept &&
+      !explanation.judgmentFramework &&
+      !explanation.commonMisunderstanding
+    ) {
       continue;
     }
     chapters.push({
       title,
       points,
       quotes,
+      explanation,
       actions,
     });
   }
@@ -164,43 +224,86 @@ function buildPrompt(params: {
   sourceType: SourceType;
   sourceRef: string;
   chapterRanges: string[];
+  chapterPlans: LlmChapterPlanHint[];
   transcriptText: string;
 }): string {
   const chapterHint = params.chapterRanges.map((range, index) => `- chapter ${index + 1}: ${range}`).join("\n");
+  const chapterPlanHint = params.chapterPlans
+    .map((plan) => {
+      const anchors = plan.evidenceAnchors
+        .map((quote) => `    - [${quote.timestamp}] ${quote.speaker}: ${quote.text}`)
+        .join("\n");
+      return [
+        `- chapter ${plan.chapterIndex}`,
+        `  - title: ${plan.title}`,
+        `  - range: ${plan.range}`,
+        `  - intent: ${plan.intent}`,
+        `  - segment_ids: ${plan.segmentIds.join(", ") || "-"}`,
+        `  - signals: ${plan.signals.join(", ") || "-"}`,
+        `  - context_excerpt: ${plan.contextExcerpt}`,
+        "  - evidence_anchors:",
+        anchors || "    - 未在原文中明确说明",
+      ].join("\n");
+    })
+    .join("\n");
   return [
-    "请你扮演中文非虚构图书编辑，把播客转写整理成“可读的小册子结构”。",
-    "输出必须是 JSON，不要输出 Markdown，不要解释。",
-    "语言默认中文，保持原意，不编造事实；引用尽量使用原文中的时间戳。",
-    "JSON 字段要求：",
+    "任务：将播客转写整理成“知识小册子”结构化草稿（JSON）。",
+    "硬性要求：",
+    "1) 绝不虚构事实、观点、时间戳、说话人、引文。",
+    '2) 无法确认的判断请写“未在原文中明确说明”。',
+    "3) quote.text 必须是原文忠实片段（可轻微去口水词，不改变含义）。",
+    "4) 输出中文，具体可执行，避免空泛口号。",
+    "5) 仅输出一个 JSON 对象，不要输出其他内容。",
+    "6) `chapters` 数量和顺序必须与 chapter_plan 完全一致，不得增删章节或重排。",
+    "7) 每章内容仅使用该章对应的 context/evidence；禁止跨章挪用引文。",
+    "JSON 字段契约（必须使用以下键名）：",
     `{
-  "suitableFor": string[3],
-  "outcomes": string[3],
+  "suitableFor": string[3-5],
+  "outcomes": string[3-5],
   "oneLineConclusion": string,
-  "tldr": string[7],
+  "tldr": string[5-7],
   "chapters": [
     {
       "title": string,
-      "points": string[3],
-      "quotes": [{"speaker": string, "timestamp": string, "text": string}, {"speaker": string, "timestamp": string, "text": string}],
-      "actions": string[2]
+      "points": string[3-5],
+      "quotes": [{"speaker": string, "timestamp": string, "text": string}, {"speaker": string, "timestamp": string, "text": string}, "... 2-4 total"],
+      "explanation": {
+        "background": string,
+        "coreConcept": string,
+        "judgmentFramework": string,
+        "commonMisunderstanding": string
+      },
+      "actions": string[2-4]
     }
   ],
-  "actionNow": string[2],
-  "actionWeek": string[2],
-  "actionLong": string[2],
-  "terms": [{"term": string, "definition": string}, {"term": string, "definition": string}, {"term": string, "definition": string}],
+  "actionNow": string[2-3],
+  "actionWeek": string[2-3],
+  "actionLong": string[1-2],
+  "terms": [{"term": string, "definition": string}, "... 3-6 total"],
   "appendixThemes": [
-    {"name": string, "quotes": [{"speaker": string, "timestamp": string, "text": string}, {"speaker": string, "timestamp": string, "text": string}]},
-    {"name": string, "quotes": [{"speaker": string, "timestamp": string, "text": string}, {"speaker": string, "timestamp": string, "text": string}]}
+    {"name": string, "quotes": [{"speaker": string, "timestamp": string, "text": string}, "... 2-6 total"]},
+    {"name": string, "quotes": [{"speaker": string, "timestamp": string, "text": string}, "... 2-6 total"]}
   ]
 }`,
+    "章节质量要求：",
+    "- 每章 points 要具体，避免抽象套话。",
+    "- 每章至少 2 条 quotes，优先保留有信息密度的原文句子。",
+    "- 每章 explanation 需要可读、保守，不可脱离原文编造成因。",
+    "- 每章 actions 用动词开头，必须能执行。",
+    "- chapter[i].title 应与 chapter_plan[i] 对齐，可轻微润色但不得偏离主题。",
+    "全局质检（生成前自查）：",
+    "- TL;DR 每条都能在 transcript 中找到依据。",
+    "- 引用里的时间戳与说话人尽量与原文一致。",
+    "- 若 transcript 存在噪音/乱码，避免把噪音作为关键引用。",
     `上下文元信息:
 - title: ${params.title}
 - language: ${params.language}
 - source_type: ${params.sourceType}
 - source_ref: ${params.sourceRef}
 - chapter range hints:
-${chapterHint}`,
+${chapterHint}
+- chapter_plan:
+${chapterPlanHint}`,
     "下面是原始 transcript（可能包含口头语和噪音）：",
     params.transcriptText,
   ].join("\n");
@@ -212,6 +315,7 @@ export async function generateBookletDraftWithLlm(params: {
   sourceType: SourceType;
   sourceRef: string;
   chapterRanges: string[];
+  chapterPlans: LlmChapterPlanHint[];
   transcriptText: string;
 }): Promise<LlmBookletDraft | null> {
   if (!config.llmApiKey) {
@@ -229,8 +333,7 @@ export async function generateBookletDraftWithLlm(params: {
       messages: [
         {
           role: "system",
-          content:
-            "You are a precise Chinese non-fiction editor. Return valid JSON only. Keep outputs concise, specific, and grounded in transcript.",
+          content: SYSTEM_PROMPT,
         },
         {
           role: "user",
@@ -277,4 +380,3 @@ export async function generateBookletDraftWithLlm(params: {
     clearTimeout(timeout);
   }
 }
-

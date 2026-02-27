@@ -11,6 +11,7 @@ function required(name: string): string {
 }
 
 export const config = {
+  host: process.env.HOST ?? "0.0.0.0",
   port: Number(process.env.PORT ?? 8080),
   databaseUrl: required("DATABASE_URL"),
   nodeEnv: process.env.NODE_ENV ?? "development",

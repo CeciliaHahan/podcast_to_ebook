@@ -302,6 +302,13 @@ type BookletQuote = {
   text: string;
 };
 
+type BookletChapterExplanation = {
+  background: string;
+  coreConcept: string;
+  judgmentFramework: string;
+  commonMisunderstanding: string;
+};
+
 type BookletChapter = {
   index: number;
   sectionId: string;
@@ -309,6 +316,7 @@ type BookletChapter = {
   range: string;
   points: string[];
   quotes: BookletQuote[];
+  explanation: BookletChapterExplanation;
   actions: string[];
 };
 
@@ -349,10 +357,79 @@ type EpubChapterFile = {
   bodyHtml: string;
 };
 
+type QuoteEvidenceLine = {
+  speakerKey: string;
+  timestampKey: string;
+  textKey: string;
+};
+
+type QuoteEvidenceIndex = {
+  lines: QuoteEvidenceLine[];
+  byTimestamp: Map<string, QuoteEvidenceLine[]>;
+};
+
+type SemanticSegment = {
+  startIndex: number;
+  endIndex: number;
+  signals: string[];
+};
+
+type TopicTemplate = {
+  title: string;
+  intent: string;
+  keywords: string[];
+  actions: string[];
+};
+
+type ChapterPlanItem = {
+  chapterIndex: number;
+  title: string;
+  range: string;
+  segmentIds: string[];
+  intent: string;
+  startIndex: number;
+  endIndex: number;
+  signals: string[];
+  topic: TopicTemplate | null;
+  topicKeywords: string[];
+};
+
+type LlmChapterPlanHint = {
+  chapterIndex: number;
+  title: string;
+  range: string;
+  segmentIds: string[];
+  intent: string;
+  signals: string[];
+  contextExcerpt: string;
+  evidenceAnchors: BookletQuote[];
+};
+
+type ChapterEvidenceMap = Map<number, QuoteEvidenceIndex>;
+
 const BOOK_CREATOR = "由播客转写整理（v1）";
 const FALLBACK_SPEAKER = "Speaker";
 const FALLBACK_TIMESTAMP = "--:--";
-const CHAPTER_COUNT = 7;
+const UNSUPPORTED_EVIDENCE_TEXT = "未在原文中明确说明。";
+const MIN_CHAPTER_COUNT = 5;
+const MAX_CHAPTER_COUNT = 7;
+const SEGMENT_MIN_ENTRIES = 8;
+const SEGMENT_TIME_GAP_SECONDS = 4 * 60;
+const MERGE_CAPS = {
+  suitableFor: 5,
+  outcomes: 5,
+  chapterPoints: 5,
+  chapterQuotes: 4,
+  chapterActions: 4,
+  tldr: 7,
+  actionNow: 3,
+  actionWeek: 3,
+  actionLong: 2,
+  terms: 6,
+  appendixThemes: 4,
+  appendixThemeQuotes: 6,
+  draftTermsMin: 2,
+} as const;
 const CJK_STOPWORDS = new Set([
   "我们",
   "你们",
@@ -448,16 +525,187 @@ function fillToCount<T>(values: T[], count: number, fallback: (index: number) =>
   return out;
 }
 
-function splitIntoChunks<T>(items: T[], chunkCount: number): T[][] {
-  const chunks = Array.from({ length: chunkCount }, () => [] as T[]);
-  if (!items.length) {
-    return chunks;
+function parseTimestampToSeconds(input: string): number | null {
+  const normalized = cleanLine(input);
+  const match = normalized.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return null;
   }
-  for (let index = 0; index < items.length; index += 1) {
-    const bucket = Math.floor((index * chunkCount) / items.length);
-    chunks[bucket]?.push(items[index] as T);
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const third = Number(match[3] ?? 0);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || !Number.isFinite(third)) {
+    return null;
   }
-  return chunks;
+  const hours = match[3] ? first : 0;
+  const minutes = match[3] ? second : first;
+  const seconds = match[3] ? third : second;
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function hasTopicShiftCue(text: string): boolean {
+  return /(下面|接下来|下一个|进入正题|回到|总结一下|最后一个|最后我们|我们聊一下|第二个问题|第三个问题)/.test(
+    text,
+  );
+}
+
+function hasQuestionCue(text: string): boolean {
+  return /(\?|？|想问|怎么|为什么|是什么)/.test(text);
+}
+
+function detectSemanticSegments(entries: TranscriptEntry[]): SemanticSegment[] {
+  if (!entries.length) {
+    return [];
+  }
+
+  const segments: SemanticSegment[] = [];
+  let startIndex = 0;
+  let pendingSignals: string[] = ["start"];
+
+  for (let index = 1; index < entries.length; index += 1) {
+    const current = entries[index];
+    const previous = entries[index - 1];
+    const signals: string[] = [];
+    const currentLen = index - startIndex;
+
+    if (hasTopicShiftCue(current.text)) {
+      signals.push("topic_shift");
+    }
+    if (currentLen >= SEGMENT_MIN_ENTRIES && hasQuestionCue(current.text)) {
+      signals.push("question_turn");
+    }
+
+    const currentTs = parseTimestampToSeconds(current.timestamp);
+    const previousTs = parseTimestampToSeconds(previous?.timestamp ?? "");
+    if (
+      currentLen >= SEGMENT_MIN_ENTRIES &&
+      currentTs != null &&
+      previousTs != null &&
+      currentTs - previousTs >= SEGMENT_TIME_GAP_SECONDS
+    ) {
+      signals.push("time_gap");
+    }
+
+    if (!signals.length || currentLen < SEGMENT_MIN_ENTRIES) {
+      continue;
+    }
+
+    segments.push({
+      startIndex,
+      endIndex: index - 1,
+      signals: uniqueNonEmpty(pendingSignals),
+    });
+    startIndex = index;
+    pendingSignals = signals;
+  }
+
+  segments.push({
+    startIndex,
+    endIndex: entries.length - 1,
+    signals: uniqueNonEmpty(pendingSignals.length ? pendingSignals : ["continuation"]),
+  });
+
+  return segments.filter((segment) => segment.endIndex >= segment.startIndex);
+}
+
+function targetChapterCount(entryCount: number): number {
+  if (entryCount < 70) {
+    return MIN_CHAPTER_COUNT;
+  }
+  if (entryCount < 150) {
+    return 6;
+  }
+  return MAX_CHAPTER_COUNT;
+}
+
+function segmentLength(segment: SemanticSegment): number {
+  return segment.endIndex - segment.startIndex + 1;
+}
+
+function mergeSegmentsToMax(segments: SemanticSegment[], maxCount: number): SemanticSegment[] {
+  const out = [...segments];
+  while (out.length > maxCount) {
+    let mergeIndex = 0;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < out.length - 1; index += 1) {
+      const score = segmentLength(out[index] as SemanticSegment) + segmentLength(out[index + 1] as SemanticSegment);
+      if (score < bestScore) {
+        bestScore = score;
+        mergeIndex = index;
+      }
+    }
+    const left = out[mergeIndex] as SemanticSegment;
+    const right = out[mergeIndex + 1] as SemanticSegment;
+    const merged: SemanticSegment = {
+      startIndex: left.startIndex,
+      endIndex: right.endIndex,
+      signals: uniqueNonEmpty([...left.signals, ...right.signals, "merged"]),
+    };
+    out.splice(mergeIndex, 2, merged);
+  }
+  return out;
+}
+
+function splitSegmentsToMin(segments: SemanticSegment[], minCount: number): SemanticSegment[] {
+  const out = [...segments];
+  while (out.length < minCount) {
+    let splitIndex = -1;
+    let maxLen = 0;
+    for (let index = 0; index < out.length; index += 1) {
+      const len = segmentLength(out[index] as SemanticSegment);
+      if (len > maxLen) {
+        maxLen = len;
+        splitIndex = index;
+      }
+    }
+    if (splitIndex === -1 || maxLen < 2) {
+      break;
+    }
+    const target = out[splitIndex] as SemanticSegment;
+    const mid = target.startIndex + Math.floor(maxLen / 2);
+    const left: SemanticSegment = {
+      startIndex: target.startIndex,
+      endIndex: mid - 1,
+      signals: uniqueNonEmpty([...target.signals, "split_left"]),
+    };
+    const right: SemanticSegment = {
+      startIndex: mid,
+      endIndex: target.endIndex,
+      signals: uniqueNonEmpty([...target.signals, "split_right"]),
+    };
+    const next: SemanticSegment[] = [];
+    if (left.endIndex >= left.startIndex) {
+      next.push(left);
+    }
+    if (right.endIndex >= right.startIndex) {
+      next.push(right);
+    }
+    if (!next.length) {
+      break;
+    }
+    out.splice(splitIndex, 1, ...next);
+  }
+  return out;
+}
+
+function planSemanticSegments(entries: TranscriptEntry[]): SemanticSegment[] {
+  if (!entries.length) {
+    return [];
+  }
+  const detected = detectSemanticSegments(entries);
+  let planned = detected.length
+    ? detected
+    : [
+        {
+          startIndex: 0,
+          endIndex: entries.length - 1,
+          signals: ["fallback_single"],
+        },
+      ];
+  const target = targetChapterCount(entries.length);
+  planned = mergeSegmentsToMax(planned, Math.min(MAX_CHAPTER_COUNT, target));
+  planned = splitSegmentsToMin(planned, Math.max(MIN_CHAPTER_COUNT, Math.min(MAX_CHAPTER_COUNT, target)));
+  return planned.filter((segment) => segment.endIndex >= segment.startIndex);
 }
 
 const NOISE_KEYWORDS = new Set([
@@ -524,39 +772,46 @@ const EN_STOPWORDS = new Set([
   "and",
 ]);
 
-const TOPIC_TEMPLATES = [
+const TOPIC_TEMPLATES: TopicTemplate[] = [
   {
     title: "开场与话题设定",
+    intent: "set-context-and-goals",
     keywords: ["今天", "话题", "亲子关系", "开始", "介绍", "update", "近况"],
     actions: ["列出你本期最关注的 3 个问题，按优先级排序。", "用一句话写下你听完这期后最想解决的核心冲突。"],
   },
   {
     title: "边界框架与识别",
+    intent: "define-concepts-and-boundaries",
     keywords: ["边界", "情感", "物质", "时间", "物理", "界限", "独立"],
     actions: ["把你的冲突按情感/物质/时间/物理四类各写 1 个例子。", "给每类冲突补 1 条替代行为，而不是只写抱怨。"],
   },
   {
     title: "常见冲突与触发点",
+    intent: "diagnose-conflicts-and-triggers",
     keywords: ["冲突", "定居", "催婚", "工作", "稳定", "焦虑", "价值观", "父母"],
     actions: ["把冲突拆成“事实问题”和“情绪问题”两列，先处理事实。", "提前写好 1 句降温回应，避免在高情绪时硬碰硬。"],
   },
   {
     title: "沟通策略与减摩擦",
+    intent: "communication-and-friction-reduction",
     keywords: ["沟通", "陪伴", "管理", "情绪", "外包", "敷衍", "策略", "电话"],
     actions: ["准备一句可复用的结束语，避免对话升级。", "选 1 件高摩擦家务，尝试第三方服务或流程替代。"],
   },
   {
     title: "内疚、支持与关系修复",
+    intent: "repair-relationship-and-support",
     keywords: ["内疚", "回报", "支持", "亲密", "理解", "关系", "成长", "爱"],
     actions: ["写下“我需要的是___，不是___”并在下一次沟通中使用。", "每周安排一次低冲突触达，只分享近况不讨论争议议题。"],
   },
   {
     title: "家庭模式观察",
+    intent: "observe-family-patterns",
     keywords: ["朋友", "家庭", "模式", "聊天", "理想", "东亚", "差异", "话题"],
     actions: ["建立一份非评判型话题清单（新闻/旅行/生活小事）。", "给家庭沟通设定最低可持续频率并坚持 4 周。"],
   },
   {
     title: "下一代与长期行动",
+    intent: "long-term-practices",
     keywords: ["父母", "孩子", "支持", "犯错", "安全感", "习惯", "长期", "行动"],
     actions: ["写下 1 条你未来做父母“绝不做”的行为规则。", "把本期最认同的 1 条原则转成可量化习惯并追踪。"],
   },
@@ -728,6 +983,93 @@ function parseTranscriptEntries(transcriptText: string): TranscriptEntry[] {
   return entries;
 }
 
+function normalizeEvidenceSpeaker(input: string): string {
+  return cleanLine(input).toLowerCase().replace(/\s+/g, "");
+}
+
+function normalizeEvidenceTimestamp(input: string): string {
+  const match = cleanLine(input).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return "";
+  }
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const third = Number(match[3] ?? 0);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || !Number.isFinite(third)) {
+    return "";
+  }
+  // Treat HH:MM as MM:SS for transcript-style timestamps.
+  const hours = match[3] ? first : 0;
+  const minutes = match[3] ? second : first;
+  const seconds = match[3] ? third : second;
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function normalizeEvidenceText(input: string): string {
+  return cleanLine(input)
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}\s]+/gu, "");
+}
+
+function buildQuoteEvidenceIndex(entries: TranscriptEntry[]): QuoteEvidenceIndex {
+  const lines: QuoteEvidenceLine[] = [];
+  const byTimestamp = new Map<string, QuoteEvidenceLine[]>();
+  for (const entry of entries) {
+    const textKey = normalizeEvidenceText(entry.text);
+    if (!textKey) {
+      continue;
+    }
+    const line: QuoteEvidenceLine = {
+      speakerKey: normalizeEvidenceSpeaker(entry.speaker || FALLBACK_SPEAKER),
+      timestampKey: normalizeEvidenceTimestamp(entry.timestamp),
+      textKey,
+    };
+    lines.push(line);
+    if (line.timestampKey) {
+      const bucket = byTimestamp.get(line.timestampKey) ?? [];
+      bucket.push(line);
+      byTimestamp.set(line.timestampKey, bucket);
+    }
+  }
+  return { lines, byTimestamp };
+}
+
+function isQuoteTextSupportedByLine(quoteKey: string, lineKey: string): boolean {
+  if (!quoteKey || !lineKey) {
+    return false;
+  }
+  if (lineKey.includes(quoteKey)) {
+    return true;
+  }
+  if (quoteKey.length >= 14 && quoteKey.includes(lineKey) && lineKey.length >= 12) {
+    return true;
+  }
+  return false;
+}
+
+function isQuoteSupportedByEvidence(quote: BookletQuote, evidence: QuoteEvidenceIndex): boolean {
+  const quoteKey = normalizeEvidenceText(quote.text);
+  if (quoteKey.length < 6) {
+    return false;
+  }
+  const quoteTsKey = normalizeEvidenceTimestamp(quote.timestamp);
+  const quoteSpeakerKey = normalizeEvidenceSpeaker(quote.speaker || FALLBACK_SPEAKER);
+
+  if (quoteTsKey) {
+    const tsCandidates = evidence.byTimestamp.get(quoteTsKey) ?? [];
+    const scopedCandidates =
+      quoteSpeakerKey && quoteSpeakerKey !== normalizeEvidenceSpeaker(FALLBACK_SPEAKER)
+        ? tsCandidates.filter((line) => line.speakerKey === quoteSpeakerKey)
+        : tsCandidates;
+    const effectiveCandidates = scopedCandidates.length ? scopedCandidates : tsCandidates;
+    if (effectiveCandidates.length) {
+      return effectiveCandidates.some((line) => isQuoteTextSupportedByLine(quoteKey, line.textKey));
+    }
+  }
+
+  return evidence.lines.some((line) => isQuoteTextSupportedByLine(quoteKey, line.textKey));
+}
+
 function toRange(entries: TranscriptEntry[]): string {
   const timestamps = entries.map((entry) => entry.timestamp).filter((ts) => ts && ts !== FALLBACK_TIMESTAMP);
   if (!timestamps.length) {
@@ -740,7 +1082,7 @@ function keywordHitCount(text: string, keywords: string[]): number {
   return keywords.reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
 }
 
-function pickTopicTemplate(chunkText: string, usedTitles: Set<string>): (typeof TOPIC_TEMPLATES)[number] | null {
+function pickTopicTemplate(chunkText: string, usedTitles: Set<string>): TopicTemplate | null {
   const scored = TOPIC_TEMPLATES.map((topic) => ({
     topic,
     score: keywordHitCount(chunkText, topic.keywords),
@@ -759,7 +1101,7 @@ function chapterTitleFromChunk(
   index: number,
   chunk: TranscriptEntry[],
   usedTopicTitles: Set<string>,
-): { title: string; topic: (typeof TOPIC_TEMPLATES)[number] | null } {
+): { title: string; topic: TopicTemplate | null } {
   const chunkText = chunk.map((entry) => entry.text).join(" ");
   const matchedTopic = pickTopicTemplate(chunkText, usedTopicTitles);
   if (matchedTopic) {
@@ -772,6 +1114,43 @@ function chapterTitleFromChunk(
     return { title: `核心主题 ${index}`, topic: null };
   }
   return { title: keywords.join(" / "), topic: null };
+}
+
+function buildChapterPlan(entries: TranscriptEntry[], segments: SemanticSegment[]): ChapterPlanItem[] {
+  const usedTopicTitles = new Set<string>();
+  return segments.map((segment, index) => {
+    const chapterIndex = index + 1;
+    const chunk = entries.slice(segment.startIndex, segment.endIndex + 1);
+    const titleMatch = chapterTitleFromChunk(chapterIndex, chunk, usedTopicTitles);
+    return {
+      chapterIndex,
+      title: titleMatch.title,
+      range: toRange(chunk),
+      segmentIds: [`seg_${String(chapterIndex).padStart(2, "0")}`],
+      intent: titleMatch.topic?.intent ?? "summarize-and-apply",
+      startIndex: segment.startIndex,
+      endIndex: segment.endIndex,
+      signals: segment.signals,
+      topic: titleMatch.topic,
+      topicKeywords: titleMatch.topic?.keywords ?? [],
+    };
+  });
+}
+
+function buildChapterEvidenceMap(entries: TranscriptEntry[], chapterPlans: ChapterPlanItem[]): ChapterEvidenceMap {
+  const map: ChapterEvidenceMap = new Map();
+  for (const plan of chapterPlans) {
+    const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
+    map.set(plan.chapterIndex, buildQuoteEvidenceIndex(chunk));
+  }
+  return map;
+}
+
+function buildChapterContextExcerpt(chunk: TranscriptEntry[]): string {
+  const excerpt = uniqueNonEmpty(chunk.map((entry) => sanitizeSentence(entry.text)).filter(isMeaningfulSentence))
+    .slice(0, 4)
+    .join("；");
+  return shorten(excerpt || UNSUPPORTED_EVIDENCE_TEXT, 300);
 }
 
 function chapterPointsFromChunk(title: string, chunk: TranscriptEntry[], topicKeywords: string[]): string[] {
@@ -835,7 +1214,7 @@ function chapterQuotesFromChunk(points: string[], chunk: TranscriptEntry[]): Boo
   }));
 }
 
-function chapterActionsFromPoints(points: string[], topic: (typeof TOPIC_TEMPLATES)[number] | null): string[] {
+function chapterActionsFromPoints(points: string[], topic: TopicTemplate | null): string[] {
   if (topic) {
     return fillToCount(topic.actions.slice(0, 2), 2, (index) => `行动 ${index + 1}：从本章整理 1 条可量化实践。`);
   }
@@ -843,6 +1222,17 @@ function chapterActionsFromPoints(points: string[], topic: (typeof TOPIC_TEMPLAT
     "把本章要点写成“继续做 / 停止做 / 尝试做”三列，并各填 1 条。",
     `在 48 小时内验证 1 条观点：${shorten(points[0] ?? "选择本章最关键观点", 24)}。`,
   ];
+}
+
+function chapterExplanationFromPoints(title: string, points: string[]): BookletChapterExplanation {
+  const lead = points[0] ?? `本章围绕“${title}”展开。`;
+  const concept = points[1] ?? lead;
+  return {
+    background: shorten(`讨论背景：${lead}`, 180),
+    coreConcept: shorten(`核心概念：${concept}`, 180),
+    judgmentFramework: "判断标准/框架：优先选择可被原文时间戳支持、且能转化为具体行为的观点。",
+    commonMisunderstanding: "常见误解：只讨论立场对错而忽略执行路径，导致冲突重复发生。",
+  };
 }
 
 function cleanBookletField(input: string, maxLength: number): string {
@@ -856,20 +1246,72 @@ function chooseListWithFallback(
   maxLength: number,
   fallbackFactory?: (index: number) => string,
 ): string[] {
-  const chosen = uniqueNonEmpty(preferred.map((item) => cleanBookletField(item, maxLength)).filter(Boolean));
-  if (!chosen.length) {
-    return fillToCount(
-      fallback.map((item) => cleanBookletField(item, maxLength)).filter(Boolean),
-      count,
-      (index) => fallbackFactory?.(index) ?? fallback[index] ?? "",
-    );
+  const chosen = uniqueNonEmpty(preferred.map((item) => cleanBookletField(item, maxLength)).filter(Boolean)).slice(
+    0,
+    count,
+  );
+  const fallbackClean = uniqueNonEmpty(
+    fallback.map((item) => cleanBookletField(item, maxLength)).filter(Boolean),
+  ).slice(0, count);
+  const merged = uniqueNonEmpty([...chosen, ...fallbackClean]).slice(0, count);
+  if (merged.length) {
+    return merged;
   }
-  return fillToCount(chosen.slice(0, count), count, (index) => fallbackFactory?.(index) ?? fallback[index] ?? "");
+  if (!fallbackFactory) {
+    return [];
+  }
+  return uniqueNonEmpty(
+    Array.from({ length: count }, (_, index) => cleanBookletField(fallbackFactory(index), maxLength)).filter(Boolean),
+  ).slice(0, count);
+}
+
+function chooseQuoteListWithFallback(
+  preferred: BookletQuote[],
+  fallback: BookletQuote[],
+  count: number,
+  evidence: QuoteEvidenceIndex,
+): BookletQuote[] {
+  const cleanQuotes = (quotes: BookletQuote[]): BookletQuote[] =>
+    quotes
+      .map((quote) => ({
+        speaker: cleanBookletField(quote.speaker || FALLBACK_SPEAKER, 32) || FALLBACK_SPEAKER,
+        timestamp: cleanBookletField(quote.timestamp || FALLBACK_TIMESTAMP, 20) || FALLBACK_TIMESTAMP,
+        text: cleanBookletField(quote.text, 200),
+      }))
+      .filter((quote) => quote.text);
+
+  const preferredSupported = cleanQuotes(preferred).filter((quote) => isQuoteSupportedByEvidence(quote, evidence));
+  const merged = [...preferredSupported, ...cleanQuotes(fallback)];
+  const seen = new Set<string>();
+  const unique: BookletQuote[] = [];
+  for (const quote of merged) {
+    const key = `${quote.speaker}|${quote.timestamp}|${quote.text}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(quote);
+    if (unique.length >= count) {
+      break;
+    }
+  }
+  if (unique.length) {
+    return unique;
+  }
+  return [
+    {
+      speaker: FALLBACK_SPEAKER,
+      timestamp: FALLBACK_TIMESTAMP,
+      text: UNSUPPORTED_EVIDENCE_TEXT,
+    },
+  ];
 }
 
 function mergeBookletWithLlmDraft(
   base: BookletModel,
   draft: Awaited<ReturnType<typeof generateBookletDraftWithLlm>>,
+  evidence: QuoteEvidenceIndex,
+  chapterEvidenceMap: ChapterEvidenceMap,
 ): BookletModel {
   if (!draft) {
     return base;
@@ -880,59 +1322,67 @@ function mergeBookletWithLlmDraft(
     if (!draftChapter) {
       return chapter;
     }
-    const draftQuotes = draftChapter.quotes
-      .map((quote) => ({
-        speaker: cleanBookletField(quote.speaker || chapter.quotes[0]?.speaker || FALLBACK_SPEAKER, 32) || FALLBACK_SPEAKER,
-        timestamp: cleanBookletField(quote.timestamp || chapter.quotes[0]?.timestamp || FALLBACK_TIMESTAMP, 20) || FALLBACK_TIMESTAMP,
-        text: cleanBookletField(quote.text, 200),
-      }))
-      .filter((quote) => quote.text);
+    const chapterEvidence = chapterEvidenceMap.get(chapter.index) ?? evidence;
 
     return {
       ...chapter,
       title: cleanBookletField(draftChapter.title || chapter.title, 48) || chapter.title,
-      points: chooseListWithFallback(draftChapter.points, chapter.points, 3, 120),
-      quotes: fillToCount(draftQuotes, 2, (quoteIndex) => chapter.quotes[quoteIndex] ?? chapter.quotes[0]),
-      actions: chooseListWithFallback(draftChapter.actions, chapter.actions, 2, 120),
+      points: chooseListWithFallback(draftChapter.points, chapter.points, MERGE_CAPS.chapterPoints, 120),
+      quotes: chooseQuoteListWithFallback(draftChapter.quotes, chapter.quotes, MERGE_CAPS.chapterQuotes, chapterEvidence),
+      explanation: {
+        background:
+          cleanBookletField(draftChapter.explanation.background || chapter.explanation.background, 220) ||
+          chapter.explanation.background,
+        coreConcept:
+          cleanBookletField(draftChapter.explanation.coreConcept || chapter.explanation.coreConcept, 220) ||
+          chapter.explanation.coreConcept,
+        judgmentFramework:
+          cleanBookletField(
+            draftChapter.explanation.judgmentFramework || chapter.explanation.judgmentFramework,
+            220,
+          ) || chapter.explanation.judgmentFramework,
+        commonMisunderstanding:
+          cleanBookletField(
+            draftChapter.explanation.commonMisunderstanding || chapter.explanation.commonMisunderstanding,
+            220,
+          ) || chapter.explanation.commonMisunderstanding,
+      },
+      actions: chooseListWithFallback(draftChapter.actions, chapter.actions, MERGE_CAPS.chapterActions, 120),
     };
   });
 
   const actionFallback = chapters.flatMap((chapter) => chapter.actions);
+  const mergedAppendixThemes = draft.appendixThemes
+    .slice(0, MERGE_CAPS.appendixThemes)
+    .map((theme, index) => ({
+      name: cleanBookletField(theme.name, 40) || `主题 ${index + 1}`,
+      quotes: chooseQuoteListWithFallback(
+        theme.quotes,
+        base.appendixThemes[index]?.quotes ?? base.appendixThemes[0]?.quotes ?? [],
+        MERGE_CAPS.appendixThemeQuotes,
+        evidence,
+      ),
+    }));
+
   return {
     ...base,
-    suitableFor: chooseListWithFallback(draft.suitableFor, base.suitableFor, 3, 120),
-    outcomes: chooseListWithFallback(draft.outcomes, base.outcomes, 3, 120),
+    suitableFor: chooseListWithFallback(draft.suitableFor, base.suitableFor, MERGE_CAPS.suitableFor, 120),
+    outcomes: chooseListWithFallback(draft.outcomes, base.outcomes, MERGE_CAPS.outcomes, 120),
     oneLineConclusion:
       cleanBookletField(draft.oneLineConclusion || base.oneLineConclusion, 180) || base.oneLineConclusion,
-    tldr: chooseListWithFallback(draft.tldr, base.tldr, 7, 180, (index) => base.tldr[index] ?? `要点 ${index + 1}`),
+    tldr: chooseListWithFallback(draft.tldr, base.tldr, MERGE_CAPS.tldr, 180, (index) => base.tldr[index] ?? `要点 ${index + 1}`),
     chapters,
-    actionNow: chooseListWithFallback(draft.actionNow, actionFallback.slice(0, 2), 2, 120),
-    actionWeek: chooseListWithFallback(draft.actionWeek, actionFallback.slice(2, 4), 2, 120),
-    actionLong: chooseListWithFallback(draft.actionLong, actionFallback.slice(4, 6), 2, 120),
+    actionNow: chooseListWithFallback(draft.actionNow, actionFallback.slice(0, 3), MERGE_CAPS.actionNow, 120),
+    actionWeek: chooseListWithFallback(draft.actionWeek, actionFallback.slice(3, 6), MERGE_CAPS.actionWeek, 120),
+    actionLong: chooseListWithFallback(draft.actionLong, actionFallback.slice(6, 8), MERGE_CAPS.actionLong, 120),
     terms:
-      draft.terms.length >= 2
-        ? draft.terms.slice(0, 3).map((term) => ({
+      draft.terms.length >= MERGE_CAPS.draftTermsMin
+        ? draft.terms.slice(0, MERGE_CAPS.terms).map((term) => ({
             term: cleanBookletField(term.term, 30),
             definition: cleanBookletField(term.definition, 120),
           }))
         : base.terms,
-    appendixThemes:
-      draft.appendixThemes.length >= 1
-        ? draft.appendixThemes.slice(0, 2).map((theme, index) => ({
-            name: cleanBookletField(theme.name, 40) || `主题 ${index + 1}`,
-            quotes: fillToCount(
-              theme.quotes
-                .map((quote) => ({
-                  speaker: cleanBookletField(quote.speaker || FALLBACK_SPEAKER, 32) || FALLBACK_SPEAKER,
-                  timestamp: cleanBookletField(quote.timestamp || FALLBACK_TIMESTAMP, 20) || FALLBACK_TIMESTAMP,
-                  text: cleanBookletField(quote.text, 200),
-                }))
-                .filter((quote) => quote.text),
-              2,
-              (quoteIndex) => base.appendixThemes[index]?.quotes[quoteIndex] ?? base.appendixThemes[0]?.quotes[0],
-            ),
-          }))
-        : base.appendixThemes,
+    appendixThemes: mergedAppendixThemes.length ? mergedAppendixThemes : base.appendixThemes,
   };
 }
 
@@ -947,22 +1397,22 @@ async function buildBookletModel(params: {
 }): Promise<BookletModel> {
   const entries = parseTranscriptEntries(params.transcriptText);
   const transcriptBody = extractTranscriptBody(params.transcriptText);
-  const chunks = splitIntoChunks(entries, CHAPTER_COUNT);
-  const usedTopicTitles = new Set<string>();
-  const chapters = chunks.map((chunk, chapterOffset) => {
-    const index = chapterOffset + 1;
-    const titleMatch = chapterTitleFromChunk(index, chunk, usedTopicTitles);
-    const title = titleMatch.title;
-    const points = chapterPointsFromChunk(title, chunk, titleMatch.topic?.keywords ?? []);
+  const plannedSegments = planSemanticSegments(entries);
+  const chapterPlan = buildChapterPlan(entries, plannedSegments);
+  const chapters = chapterPlan.map((plan) => {
+    const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
+    const points = chapterPointsFromChunk(plan.title, chunk, plan.topicKeywords);
     const quotes = chapterQuotesFromChunk(points, chunk);
+    const explanation = chapterExplanationFromPoints(plan.title, points);
     return {
-      index,
-      sectionId: `chap_${String(index + 3).padStart(2, "0")}`,
-      title,
-      range: toRange(chunk),
+      index: plan.chapterIndex,
+      sectionId: `chap_${String(plan.chapterIndex + 3).padStart(2, "0")}`,
+      title: plan.title,
+      range: plan.range,
       points,
       quotes,
-      actions: chapterActionsFromPoints(points, titleMatch.topic),
+      explanation,
+      actions: chapterActionsFromPoints(points, plan.topic),
     };
   });
 
@@ -1044,9 +1494,25 @@ async function buildBookletModel(params: {
     sourceType: params.sourceType,
     sourceRef: params.sourceRef,
     chapterRanges: baseModel.chapters.map((chapter) => `${chapter.title}（${chapter.range}）`),
+    chapterPlans: chapterPlan.map((plan) => {
+      const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
+      const chapter = chapters[plan.chapterIndex - 1];
+      return {
+        chapterIndex: plan.chapterIndex,
+        title: plan.title,
+        range: plan.range,
+        segmentIds: plan.segmentIds,
+        intent: plan.intent,
+        signals: plan.signals,
+        contextExcerpt: buildChapterContextExcerpt(chunk),
+        evidenceAnchors: (chapter?.quotes ?? []).slice(0, 3),
+      } satisfies LlmChapterPlanHint;
+    }),
     transcriptText: transcriptBody,
   });
-  return mergeBookletWithLlmDraft(baseModel, llmDraft);
+  const evidence = buildQuoteEvidenceIndex(entries);
+  const chapterEvidenceMap = buildChapterEvidenceMap(entries, chapterPlan);
+  return mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap);
 }
 
 function buildMarkdownContent(model: BookletModel): string {
@@ -1085,6 +1551,12 @@ function buildMarkdownContent(model: BookletModel): string {
     lines.push("");
     lines.push("### 关键引用（带时间戳）");
     lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
+    lines.push("");
+    lines.push("### 解释与延展（落地版）");
+    lines.push(`- 背景：${chapter.explanation.background}`);
+    lines.push(`- 核心概念：${chapter.explanation.coreConcept}`);
+    lines.push(`- 判断标准/框架：${chapter.explanation.judgmentFramework}`);
+    lines.push(`- 常见误解：${chapter.explanation.commonMisunderstanding}`);
     lines.push("");
     lines.push("### 可执行行动");
     lines.push(...chapter.actions.map((action) => `- ${action}`));
@@ -1190,6 +1662,13 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       writePdfBulletList(doc, chapter.points);
       doc.fontSize(13).text("关键引用（带时间戳）");
       writePdfQuoteList(doc, chapter.quotes);
+      doc.fontSize(13).text("解释与延展（落地版）");
+      writePdfBulletList(doc, [
+        `背景：${chapter.explanation.background}`,
+        `核心概念：${chapter.explanation.coreConcept}`,
+        `判断标准/框架：${chapter.explanation.judgmentFramework}`,
+        `常见误解：${chapter.explanation.commonMisunderstanding}`,
+      ]);
       doc.fontSize(13).text("可执行行动");
       writePdfBulletList(doc, chapter.actions);
     }
@@ -1279,6 +1758,13 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
         listToHtml(chapter.points),
         "<h3>关键引用（带时间戳）</h3>",
         quoteListToHtml(chapter.quotes),
+        "<h3>解释与延展（落地版）</h3>",
+        listToHtml([
+          `背景：${chapter.explanation.background}`,
+          `核心概念：${chapter.explanation.coreConcept}`,
+          `判断标准/框架：${chapter.explanation.judgmentFramework}`,
+          `常见误解：${chapter.explanation.commonMisunderstanding}`,
+        ]),
         "<h3>可执行行动</h3>",
         listToHtml(chapter.actions),
       ].join(""),
