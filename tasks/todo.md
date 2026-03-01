@@ -1,5 +1,118 @@
 # TODO
 
+## Current Task: Simplify Backend Pipeline + Add Stage Inspector (2026-03-01)
+
+### Plan
+
+- [x] Remove async queue + synthetic stage/event progression (`jobQueue` + state-machine driven event writes).
+- [x] Keep one minimal job record flow, but run generation inline from create endpoint so status is immediate and simple.
+- [x] Add an inspector trace model that records end-to-end stage I/O:
+- [x] `transcript` input snapshot (size + preview),
+- [x] `llm_request` payload (model/config + prompt preview),
+- [x] `llm_response` raw/parsed draft preview,
+- [x] `normalization` input/output summary,
+- [x] `pdf_render` input + render configuration used.
+- [x] Persist inspector trace in `job_inputs.metadata` for each run.
+- [x] Add backend endpoint `GET /v1/jobs/:job_id/inspector` that returns ordered stage details for UI.
+- [x] Update extension inspector view to show the new stage-by-stage trace instead of generic timeline events.
+- [x] Keep existing artifact download flow unchanged.
+- [x] Run backend typecheck + one smoke run, then record results.
+
+### Review
+
+- Removed async queue/state-machine files and stopped event-based progression.
+- Changed job execution to inline pipeline in `jobsService`, while preserving job/artifact records.
+- Added persisted inspector trace in `job_inputs.metadata.inspector_trace`.
+- Added backend inspector endpoint: `GET /v1/jobs/:job_id/inspector`.
+- Captured stage visibility exactly for:
+- `transcript` (input snapshot),
+- `llm_request` (prompt/model/config),
+- `llm_response` (raw preview + parsed counts),
+- `normalization` (input/output summary),
+- `pdf` (render input/config/output checksum/size).
+- Updated sidepanel Inspector card to render stage-by-stage input/config/output blocks from `/inspector`.
+- Updated `scripts/dev-smoke.sh` to validate `/inspector` instead of `/events`.
+- Validation:
+- `cd backend && npm run typecheck` passed.
+- End-to-end smoke passed with inline backend run + `./scripts/dev-smoke.sh` (job succeeded, artifacts returned, inspector stages returned).
+
+## Current Task: Rewrite AGENTS.md For Solo, Simple Workflow (2026-03-01)
+
+### Plan
+
+- [x] Replace `AGENTS.md` completely with a shorter, plain-language guide tailored to a single user.
+- [x] Add a project TOC tree view that points agents to the right directories/files quickly.
+- [x] Include ranked lists for:
+  - decision priorities,
+  - where to look first by task type,
+  - when complexity is warranted.
+- [x] Add explicit complexity tradeoff guidance (when to keep simple vs when extra structure is worth it).
+- [x] Add collaboration style rules that require teacher-like explanations from fundamentals and terminology.
+- [x] Keep instructions minimal, concrete, and execution-focused; remove redundant process overhead.
+- [x] Add a short `Review` note for this task after implementation.
+
+### Review
+
+- Rewrote `AGENTS.md` end-to-end for a solo-user workflow with minimal process overhead.
+- Added ranked guidance for decisions, file lookup order, and when complexity is warranted.
+- Added explicit complexity tradeoff language to bias toward simplest viable solutions.
+- Added a practical project TOC tree view so agents can route work quickly.
+- Added required teacher-style collaboration rules: fundamentals first, terminology definitions, and research-friendly explanations.
+
+## Current Task: Promote Payload Tab To Top-Level + Improve Readability (2026-03-01)
+
+### Plan
+
+- [x] Move tab controls to the top-level side panel layout (`Workspace` and `Payload Inspector`), not nested inside any card.
+- [x] Keep current workflow UI in `Workspace` tab unchanged (connection/form/status/artifacts/timeline).
+- [x] Show payload logs only in top-level `Payload Inspector` tab with clearer, human-readable formatting.
+- [x] Improve payload rendering readability: labeled request/response sections, pretty JSON, truncated long fields with explicit markers.
+- [x] Preserve existing payload capture behavior in `apiRequest()` and keep log controls (`Clear Logs`, capped list).
+- [x] Validate extension script syntax and verify tab switching + payload readability behavior.
+- [x] Record final behavior and usage notes in `Review`.
+
+## Current Task: Add Payload Inspector Tab In Side Panel (2026-03-01)
+
+### Plan
+
+- [x] Add a new tabbed section in side panel UI with two tabs: `Timeline` and `Payload Inspector`.
+- [x] Keep current Timeline behavior unchanged, and render request/response payload logs in the new tab.
+- [x] Capture API call metadata in `apiRequest()` (method, path, URL, request body, status, response body/error, timestamp).
+- [x] Add lightweight controls: clear logs + capped log length to avoid UI bloat.
+- [x] Validate extension script syntax and verify one create/poll flow populates payload logs.
+- [x] Record changes and usage notes in `Review`.
+
+## Current Task: Add One-Command Server Runner + Launch It (2026-03-01)
+
+### Plan
+
+- [x] Add a new script `scripts/run-server.sh` for one-command local server startup (with dependency and readiness checks).
+- [x] Keep existing scripts/API behavior unchanged; only add the new runner script.
+- [x] Run the new script in a background terminal session and keep it alive.
+- [x] Verify server health via `http://localhost:8080/healthz`.
+- [x] Record usage and run result in `Review`.
+
+## Current Task: Stabilize Dev Startup + Auto-Recover Stale Active Jobs (2026-03-01)
+
+### Plan
+
+- [x] Harden `scripts/dev-up.sh` readiness checks (PostgreSQL + backend `/healthz`) with clear failure hints.
+- [x] Add minimal stale-active-job cleanup helper in repository layer (target: old `queued/processing` records only).
+- [x] Update active-job quota guard to retry count after stale cleanup before returning `ACTIVE_JOB_LIMIT_EXCEEDED`.
+- [x] Run backend typecheck and smoke verification for both connectivity and job creation path.
+- [x] Record implementation notes and outcomes in `Review`.
+
+## Current Task: Extension Failed-To-Fetch Root-Cause Recheck After Reset (2026-03-01)
+
+### Plan
+
+- [x] Reproduce current failure from clean `27e197f` state and capture exact layer (`port/listen`, `healthz`, `v1 route`, `auth`, `quota`).
+- [x] Verify backend startup stability path in this commit (`./scripts/dev-up.sh`) and confirm whether process stays alive after script exits.
+- [x] Check side panel effective config (API Base URL + token) and validate with direct `curl` parity tests.
+- [x] Inspect DB active jobs for `cecilia@example.com` to rule in/out `ACTIVE_JOB_LIMIT_EXCEEDED` as secondary blocker after network is restored.
+- [x] Propose the smallest safe fix set (startup script hardening first, then optional stale-job handling), with no API contract changes.
+- [x] After your approval, implement only the agreed minimal fix and validate with `./scripts/dev-smoke.sh` + side panel flow.
+
 ## Current Task: Backend Process Persistence Fix (2026-02-27)
 
 ### Plan
@@ -189,6 +302,116 @@
 - [x] Switched Git commit email to GitHub noreply for future commits.
 
 ## Review
+
+### Promote Payload Tab To Top-Level + Improve Readability (2026-03-01)
+
+- Converted payload inspector to top-level navigation for the entire side panel:
+  - `Workspace` tab
+  - `Payload Inspector` tab
+- Kept existing workflow unchanged under `Workspace`:
+  - Connection / Create Job / Job Status / Artifacts / Timeline.
+- Moved payload view out of nested section and into dedicated top-level panel.
+- Improved readability in payload list:
+  - each entry now shows summary line (time, method/path, status),
+  - clear labeled blocks:
+    - `Request -> <url>`
+    - `Response`
+  - pretty JSON is preserved from existing logger formatting, with truncation marker for long payloads.
+- Maintained existing payload logging behavior:
+  - captures success/error/network failure attempts in `apiRequest()`,
+  - keeps capped list and `Clear Logs` action.
+- Validation:
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+
+### Add Payload Inspector Tab In Side Panel (2026-03-01)
+
+- Added tabbed Activity UI in side panel:
+  - `Timeline` tab (existing events list retained).
+  - `Payload Inspector` tab (new request/response payload log view).
+- Files updated:
+  - `extension/sidepanel/sidepanel.html`
+  - `extension/sidepanel/sidepanel.css`
+  - `extension/sidepanel/sidepanel.js`
+- Payload logging behavior:
+  - logs each API attempt in `apiRequest()` with:
+    - timestamp
+    - method/path/url
+    - request body preview
+    - response body preview or network error message
+    - HTTP status (when available)
+  - includes both successful and failed HTTP responses, and network-failure attempts.
+  - payload list is capped to 80 entries to avoid unbounded growth.
+  - each payload preview is capped to 6000 chars (large transcript bodies are truncated safely).
+- Added user control:
+  - `Clear Logs` button in `Payload Inspector`.
+- Validation:
+  - extension script syntax check passed: `node --check extension/sidepanel/sidepanel.js`.
+  - request/response capture is wired into all sidepanel API calls (`create`, `status`, `events`, `artifacts`) via shared `apiRequest()`.
+
+### Add One-Command Server Runner + Launch It (2026-03-01)
+
+- Added new runner script: `scripts/run-server.sh`.
+- Script behavior:
+  - ensures PostgreSQL service is running and ready (`pg_isready` wait),
+  - ensures DB/env bootstrap and runs migration,
+  - installs/builds backend,
+  - starts backend in foreground (`node dist/index.js`).
+- Safety behavior:
+  - if `:8080` is already in use, script exits with a clear hint to run `./scripts/dev-down.sh` first.
+- Usage:
+  - start server: `./scripts/run-server.sh`
+  - stop service stack: `./scripts/dev-down.sh`
+- Run result in this session:
+  - launched script in background terminal session `16155`,
+  - verified health endpoint returns:
+    - `{"ok":true,"service":"podcasts-to-ebooks-backend"}`
+
+### Stabilize Dev Startup + Auto-Recover Stale Active Jobs (2026-03-01)
+
+- Root-cause recap from this round:
+  - extension `Failed to fetch` occurs when backend is not reachable on `http://localhost:8080`.
+  - after network recovery, `ACTIVE_JOB_LIMIT_EXCEEDED` can still block new jobs if stale `queued/processing` rows remain.
+- Implemented minimal startup hardening in `scripts/dev-up.sh`:
+  - wait for PostgreSQL readiness using `pg_isready` (up to 30s).
+  - wait for backend `/healthz` readiness (up to 30s).
+  - on health timeout, print `/tmp/podcasts_to_ebooks_backend.log` tail and exit non-zero.
+  - backend launch now prefers `setsid + nohup` when `setsid` is available.
+- Implemented stale active-job auto-recovery:
+  - added `failStaleActiveJobs(userId, staleMinutes)` in `backend/src/repositories/jobsRepo.ts`.
+  - only updates old `queued/processing` rows for the user to:
+    - `status='failed'`
+    - `error_code='STALE_ACTIVE_JOB_RECOVERED'`
+  - updated `assertUserQuota()` in `backend/src/services/jobsService.ts`:
+    - when active limit is hit, perform stale cleanup (15 minutes),
+    - re-count active jobs before deciding whether to throw `ACTIVE_JOB_LIMIT_EXCEEDED`.
+- Validation:
+  - `npm run typecheck` passed.
+  - stale recovery confirmed with live DB state:
+    - before create: two active jobs existed for `cecilia@example.com` (one stale from `17:38` and one recent),
+    - create request succeeded,
+    - stale row was auto-marked failed with `STALE_ACTIVE_JOB_RECOVERED`.
+  - smoke run still reaches API/job stages successfully; existing known behavior remains:
+    - short polling window can return `JOB_NOT_READY` at artifacts step.
+
+### Extension Failed-To-Fetch Root-Cause Recheck After Reset (2026-03-01)
+
+- Reproduced from reset `27e197f` state:
+  - `lsof :8080` empty,
+  - `curl http://localhost:8080/healthz` connection refused,
+  - `./scripts/dev-smoke.sh` fails at first health check.
+- Confirmed sidepanel config path is correct:
+  - default API base `http://localhost:8080`,
+  - default token `dev:cecilia@example.com`,
+  - host permissions include both `localhost` and `127.0.0.1`.
+- Confirmed route/auth layer is reachable once backend is up:
+  - direct POST to `/v1/jobs/from-transcript` succeeds when backend is running.
+- Secondary blocker identified:
+  - stale active jobs in DB can trigger `ACTIVE_JOB_LIMIT_EXCEEDED` after network is fixed.
+- UX guidance improvement:
+  - sidepanel network error message now includes:
+    - `./scripts/dev-up.sh`
+    - `./scripts/dev-smoke.sh`
+    - fallback foreground backend start: `cd backend && npm run start`
 
 ### Backend Process Persistence Fix (2026-02-27)
 

@@ -1,5 +1,7 @@
 const STORAGE_KEY = "pte_settings_v1";
 const LAST_JOB_KEY = "pte_last_job_v1";
+const MAX_PAYLOAD_LOGS = 80;
+const MAX_PAYLOAD_PREVIEW_CHARS = 6000;
 const DEFAULTS = {
   apiBaseUrl: "http://localhost:8080",
   token: "dev:cecilia@example.com",
@@ -28,10 +30,18 @@ const elements = {
   errorBox: document.getElementById("error-box"),
   artifactsList: document.getElementById("artifacts-list"),
   eventsList: document.getElementById("events-list"),
+  topTabWorkspace: document.getElementById("top-tab-workspace"),
+  topTabPayload: document.getElementById("top-tab-payload"),
+  workspaceRoot: document.getElementById("workspace-root"),
+  payloadRoot: document.getElementById("payload-root"),
+  clearPayloadLogs: document.getElementById("clear-payload-logs"),
+  payloadList: document.getElementById("payload-list"),
 };
 
 let pollTimer = null;
 let didAutoSwitchBaseUrl = false;
+let activeTab = "workspace";
+const payloadLogs = [];
 
 function autoGenerateTitle(transcript) {
   const body = String(transcript || "").replace(/^.*?transcript\s*:/is, "");
@@ -80,6 +90,81 @@ function clearError() {
   elements.errorBox.textContent = "";
 }
 
+function setActiveTab(tabName) {
+  activeTab = tabName;
+  const showPayload = tabName === "payload";
+  elements.topTabWorkspace.classList.toggle("active", !showPayload);
+  elements.topTabPayload.classList.toggle("active", showPayload);
+  elements.topTabWorkspace.setAttribute("aria-selected", String(!showPayload));
+  elements.topTabPayload.setAttribute("aria-selected", String(showPayload));
+  elements.workspaceRoot.hidden = showPayload;
+  elements.payloadRoot.hidden = !showPayload;
+}
+
+function toPayloadPreview(value) {
+  if (value === undefined) {
+    return "(none)";
+  }
+  let text = "";
+  try {
+    text = JSON.stringify(value, null, 2);
+  } catch (_error) {
+    text = String(value);
+  }
+  if (text.length <= MAX_PAYLOAD_PREVIEW_CHARS) {
+    return text;
+  }
+  return `${text.slice(0, MAX_PAYLOAD_PREVIEW_CHARS)}\n... <truncated>`;
+}
+
+function pushPayloadLog(entry) {
+  payloadLogs.push(entry);
+  if (payloadLogs.length > MAX_PAYLOAD_LOGS) {
+    payloadLogs.splice(0, payloadLogs.length - MAX_PAYLOAD_LOGS);
+  }
+  renderPayloadLogs();
+}
+
+function renderPayloadLogs() {
+  elements.payloadList.innerHTML = "";
+  if (!payloadLogs.length) {
+    elements.payloadList.innerHTML = "<li>No payload logs yet.</li>";
+    return;
+  }
+  for (const entry of payloadLogs.slice().reverse()) {
+    const li = document.createElement("li");
+    const meta = document.createElement("div");
+    meta.className = "payload-meta";
+    meta.textContent =
+      `${new Date(entry.ts).toLocaleTimeString()} · ${entry.method} ${entry.path}` +
+      (entry.status ? ` · HTTP ${entry.status}` : "") +
+      (entry.kind === "network_error" ? " · Network Error" : "");
+
+    const reqLabel = document.createElement("p");
+    reqLabel.className = "payload-label";
+    reqLabel.textContent = `Request -> ${entry.url}`;
+
+    const reqBlock = document.createElement("pre");
+    reqBlock.className = "payload-block";
+    reqBlock.textContent = entry.requestBody;
+
+    const resLabel = document.createElement("p");
+    resLabel.className = "payload-label";
+    resLabel.textContent = "Response";
+
+    const resBlock = document.createElement("pre");
+    resBlock.className = "payload-block";
+    resBlock.textContent = entry.responseBody;
+
+    li.appendChild(meta);
+    li.appendChild(reqLabel);
+    li.appendChild(reqBlock);
+    li.appendChild(resLabel);
+    li.appendChild(resBlock);
+    elements.payloadList.appendChild(li);
+  }
+}
+
 function renderStatus(data) {
   elements.jobId.textContent = data.job_id || "-";
   elements.jobStatus.textContent = data.status || "idle";
@@ -107,15 +192,23 @@ function renderArtifacts(data) {
   }
 }
 
-function renderEvents(data) {
+function renderInspector(data) {
   elements.eventsList.innerHTML = "";
-  if (!data?.events?.length) {
-    elements.eventsList.innerHTML = "<li>No events yet.</li>";
+  if (!data?.stages?.length) {
+    elements.eventsList.innerHTML = "<li>No inspector stages yet.</li>";
     return;
   }
-  for (const event of data.events.slice(-12)) {
+  for (const stage of data.stages) {
     const li = document.createElement("li");
-    li.textContent = `${new Date(event.ts).toLocaleTimeString()} · ${event.stage} · ${event.message}`;
+    const inputPreview = toPayloadPreview(stage.input);
+    const outputPreview = toPayloadPreview(stage.output);
+    const configPreview = toPayloadPreview(stage.config);
+    const note = stage.notes ? `\nnotes: ${stage.notes}` : "";
+    li.textContent =
+      `${new Date(stage.ts).toLocaleTimeString()} · ${stage.stage}` +
+      `\ninput: ${inputPreview}` +
+      `\nconfig: ${configPreview}` +
+      `\noutput: ${outputPreview}${note}`;
     elements.eventsList.appendChild(li);
   }
 }
@@ -189,6 +282,8 @@ function formatNetworkFetchMessage(path, triedBaseUrls, error) {
     "1) 确认后端在运行：打开 http://localhost:8080/healthz，应该返回 ok。",
     "2) 检查 API Base URL（建议 http://localhost:8080）。",
     "3) 检查 Token 是否有效（例如 dev:cecilia@example.com）。",
+    "4) 在项目根目录执行 ./scripts/dev-up.sh；再用 ./scripts/dev-smoke.sh 验证。",
+    "5) 若仍不通，单独启动后端：cd backend && npm run start。",
     `浏览器错误：${browserMessage}`,
   ].join("\n");
 }
@@ -226,12 +321,14 @@ async function storageSet(value) {
 async function apiRequest(path, method, body) {
   const settings = await getSettings();
   const baseCandidates = buildApiBaseCandidates(settings.apiBaseUrl);
+  const requestBodyPreview = toPayloadPreview(body);
   let lastNetworkError = null;
 
   for (let index = 0; index < baseCandidates.length; index += 1) {
     const baseUrl = baseCandidates[index];
+    const requestUrl = `${baseUrl}${path}`;
     try {
-      const response = await fetch(`${baseUrl}${path}`, {
+      const response = await fetch(requestUrl, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -246,10 +343,32 @@ async function apiRequest(path, method, body) {
         } catch (_error) {
           payload = null;
         }
+        pushPayloadLog({
+          ts: new Date().toISOString(),
+          method,
+          path,
+          url: requestUrl,
+          kind: "http",
+          status: response.status,
+          requestBody: requestBodyPreview,
+          responseBody: toPayloadPreview(payload ?? `HTTP ${response.status}`),
+        });
         const code = payload?.error?.code || "UNKNOWN_ERROR";
         const message = payload?.error?.message || `HTTP ${response.status}`;
         throw new Error(`${code}: ${message}`);
       }
+
+      const jsonBody = await response.json();
+      pushPayloadLog({
+        ts: new Date().toISOString(),
+        method,
+        path,
+        url: requestUrl,
+        kind: "http",
+        status: response.status,
+        requestBody: requestBodyPreview,
+        responseBody: toPayloadPreview(jsonBody),
+      });
 
       if (index > 0 && !didAutoSwitchBaseUrl) {
         didAutoSwitchBaseUrl = true;
@@ -259,9 +378,18 @@ async function apiRequest(path, method, body) {
         showSettingsFeedback(`Connected via ${baseUrl}. API Base URL auto-updated.`);
       }
 
-      return response.json();
+      return jsonBody;
     } catch (error) {
       if (isLikelyNetworkFetchError(error)) {
+        pushPayloadLog({
+          ts: new Date().toISOString(),
+          method,
+          path,
+          url: requestUrl,
+          kind: "network_error",
+          requestBody: requestBodyPreview,
+          responseBody: toPayloadPreview(error instanceof Error ? error.message : "Failed to fetch"),
+        });
         lastNetworkError = error;
         continue;
       }
@@ -283,9 +411,9 @@ async function fetchArtifacts(jobId) {
   renderArtifacts(data);
 }
 
-async function fetchEvents(jobId) {
-  const data = await apiRequest(`/v1/jobs/${jobId}/events`, "GET");
-  renderEvents(data);
+async function fetchInspector(jobId) {
+  const data = await apiRequest(`/v1/jobs/${jobId}/inspector`, "GET");
+  renderInspector(data);
 }
 
 function stopPolling() {
@@ -302,7 +430,7 @@ async function startPolling(jobId) {
     try {
       clearError();
       const job = await fetchStatus(jobId);
-      await fetchEvents(jobId);
+      await fetchInspector(jobId);
       if (job.status === "succeeded") {
         await fetchArtifacts(jobId);
         stopPolling();
@@ -348,7 +476,7 @@ async function handleCreateJob(event) {
     const created = await apiRequest("/v1/jobs/from-transcript", "POST", payload);
     renderStatus({ job_id: created.job_id, status: created.status, progress: 0, stage: "queued" });
     elements.artifactsList.innerHTML = "<li>Waiting for artifacts...</li>";
-    elements.eventsList.innerHTML = "<li>Waiting for events...</li>";
+    elements.eventsList.innerHTML = "<li>Waiting for inspector stages...</li>";
     await startPolling(created.job_id);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "Failed to submit job");
@@ -375,7 +503,7 @@ async function restoreLastJob() {
   }
   try {
     const status = await fetchStatus(lastJob);
-    await fetchEvents(lastJob);
+    await fetchInspector(lastJob);
     if (status.status === "succeeded") {
       await fetchArtifacts(lastJob);
       return;
@@ -407,6 +535,14 @@ async function init() {
     }
   });
   elements.loadSample.addEventListener("click", loadSample);
+  elements.topTabWorkspace.addEventListener("click", () => setActiveTab("workspace"));
+  elements.topTabPayload.addEventListener("click", () => setActiveTab("payload"));
+  elements.clearPayloadLogs.addEventListener("click", () => {
+    payloadLogs.splice(0, payloadLogs.length);
+    renderPayloadLogs();
+  });
+  setActiveTab(activeTab);
+  renderPayloadLogs();
   await loadSettings();
   await restoreLastJob();
 }

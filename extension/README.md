@@ -5,7 +5,7 @@ This extension provides the V1 transcript workflow:
 - configure API URL + bearer token
 - submit transcript job
 - poll job status
-- view artifacts and events
+- view artifacts and stage-by-stage inspector trace
 
 ## Load in Chrome
 

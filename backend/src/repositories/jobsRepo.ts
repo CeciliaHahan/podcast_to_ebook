@@ -54,6 +54,24 @@ export type ArtifactDownloadRecord = {
   type: OutputFormat;
 };
 
+export type InspectorStageName =
+  | "transcript"
+  | "llm_request"
+  | "llm_response"
+  | "normalization"
+  | "pdf";
+
+export type InspectorStageRecord = {
+  stage: InspectorStageName;
+  ts: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  notes?: string;
+};
+
+export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;
+
 const CJK_FONT_CANDIDATES = [
   path.resolve(process.cwd(), "../assets/fonts/NotoSansCJKsc-Regular.otf"),
   "/System/Library/Fonts/STHeiti Medium.ttc",
@@ -61,6 +79,16 @@ const CJK_FONT_CANDIDATES = [
   "/System/Library/Fonts/Supplemental/Songti.ttc",
   "/System/Library/Fonts/STHeiti Light.ttc",
 ];
+
+function pushInspectorStage(
+  collector: ((stage: InspectorPushInput) => void) | undefined,
+  stage: InspectorPushInput,
+) {
+  if (!collector) {
+    return;
+  }
+  collector(stage);
+}
 
 export async function countActiveJobs(userId: string): Promise<number> {
   const result = await db.query<{ count: string }>(
@@ -81,6 +109,22 @@ export async function countDailyJobs(userId: string): Promise<number> {
     [userId],
   );
   return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function failStaleActiveJobs(userId: string, staleMinutes: number): Promise<number> {
+  const result = await db.query(
+    `UPDATE jobs
+        SET status = 'failed'::job_status,
+            error_code = 'STALE_ACTIVE_JOB_RECOVERED',
+            error_message = 'Auto-marked failed after stale active timeout.',
+            finished_at = CASE WHEN finished_at IS NULL THEN NOW() ELSE finished_at END,
+            updated_at = NOW()
+      WHERE user_id = $1
+        AND status IN ('queued'::job_status, 'processing'::job_status)
+        AND updated_at < NOW() - ($2::int * INTERVAL '1 minute')`,
+    [userId, staleMinutes],
+  );
+  return result.rowCount ?? 0;
 }
 
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -176,12 +220,6 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string;
       ],
     );
 
-    await client.query(
-      `INSERT INTO job_events (job_id, event_level, stage, message, details)
-       VALUES ($1, 'info', 'queued', 'Job accepted', '{}'::jsonb)`,
-      [jobId],
-    );
-
     return {
       jobId,
       status: "queued",
@@ -266,26 +304,6 @@ export async function updateJobStatusAndStage(params: {
       params.progress,
       params.errorCode ?? null,
       params.errorMessage ?? null,
-    ],
-  );
-}
-
-export async function appendJobEvent(params: {
-  jobId: string;
-  stage: string;
-  message: string;
-  level?: "info" | "warn" | "error";
-  details?: Record<string, unknown>;
-}) {
-  await db.query(
-    `INSERT INTO job_events (job_id, event_level, stage, message, details)
-     VALUES ($1, $2, $3, $4, $5::jsonb)`,
-    [
-      params.jobId,
-      params.level ?? "info",
-      params.stage,
-      params.message,
-      JSON.stringify(params.details ?? {}),
     ],
   );
 }
@@ -1394,6 +1412,7 @@ async function buildBookletModel(params: {
   sourceType: SourceType;
   sourceRef: string;
   transcriptText: string;
+  inspector?: (stage: InspectorPushInput) => void;
 }): Promise<BookletModel> {
   const entries = parseTranscriptEntries(params.transcriptText);
   const transcriptBody = extractTranscriptBody(params.transcriptText);
@@ -1509,10 +1528,69 @@ async function buildBookletModel(params: {
       } satisfies LlmChapterPlanHint;
     }),
     transcriptText: transcriptBody,
+    inspector: {
+      onRequest: (request) => {
+        pushInspectorStage(params.inspector, {
+          stage: "llm_request",
+          input: {
+            prompt_preview: request.promptPreview,
+          },
+          config: {
+            model: request.model,
+            temperature: request.temperature,
+            timeout_ms: request.timeoutMs,
+            input_max_chars: request.inputMaxChars,
+            endpoint: request.endpoint,
+          },
+        });
+      },
+      onResponse: (response) => {
+        pushInspectorStage(params.inspector, {
+          stage: "llm_response",
+          input: {
+            http_status: response.httpStatus,
+            raw_response_preview: response.rawContentPreview,
+          },
+          output: {
+            parsed_chapters: response.parsedChapterCount,
+            parsed_terms: response.parsedTermCount,
+            parsed_tldr: response.parsedTldrCount,
+            parse_ok: response.parseOk,
+          },
+        });
+      },
+      onError: (message) => {
+        pushInspectorStage(params.inspector, {
+          stage: "llm_response",
+          notes: `LLM fallback path used: ${message}`,
+          output: { parse_ok: false },
+        });
+      },
+    },
   });
   const evidence = buildQuoteEvidenceIndex(entries);
   const chapterEvidenceMap = buildChapterEvidenceMap(entries, chapterPlan);
-  return mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap);
+  const finalModel = mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap);
+  pushInspectorStage(params.inspector, {
+    stage: "normalization",
+    input: {
+      parsed_entries: entries.length,
+      planned_chapters: chapterPlan.length,
+      llm_draft_available: Boolean(llmDraft),
+      base_title: baseModel.meta.title,
+    },
+    output: {
+      final_chapters: finalModel.chapters.length,
+      chapter_titles: finalModel.chapters.map((chapter) => chapter.title),
+      tldr_count: finalModel.tldr.length,
+      terms_count: finalModel.terms.length,
+    },
+    config: {
+      merge_caps: MERGE_CAPS,
+      source_type: params.sourceType,
+    },
+  });
+  return finalModel;
 }
 
 function buildMarkdownContent(model: BookletModel): string {
@@ -2028,6 +2106,7 @@ export async function createArtifacts(params: {
   templateId: string;
   sourceType: SourceType;
   sourceRef?: string;
+  inspector?: (stage: InspectorPushInput) => void;
 }) {
   const booklet = await buildBookletModel({
     jobId: params.jobId,
@@ -2037,14 +2116,43 @@ export async function createArtifacts(params: {
     templateId: params.templateId,
     sourceType: params.sourceType,
     sourceRef: params.sourceRef?.trim() || "N/A",
+    inspector: params.inspector,
   });
 
   for (const format of params.formats) {
+    if (format === "pdf") {
+      const resolvedFont = await resolveCjkFontPath();
+      pushInspectorStage(params.inspector, {
+        stage: "pdf",
+        input: {
+          chapter_count: booklet.chapters.length,
+          title: booklet.meta.title,
+          language: booklet.meta.language,
+        },
+        config: {
+          renderer: "pdfkit",
+          cjk_font_resolved: resolvedFont ?? "none",
+          margin: 48,
+          sections: ["chap_01..chap_14"],
+        },
+      });
+    }
+
     const built = await prepareArtifactFile({
       jobId: params.jobId,
       format,
       booklet,
     });
+    if (format === "pdf") {
+      pushInspectorStage(params.inspector, {
+        stage: "pdf",
+        output: {
+          file_name: built.fileName,
+          size_bytes: built.sizeBytes,
+          checksum_sha256: built.checksum,
+        },
+      });
+    }
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await db.query(
       `INSERT INTO artifacts
@@ -2118,6 +2226,43 @@ export async function getJobInputByJobId(jobId: string): Promise<JobInputRecord 
   };
 }
 
+export async function setJobInspectorTrace(jobId: string, stages: InspectorStageRecord[]): Promise<void> {
+  await db.query(
+    `UPDATE job_inputs
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('inspector_trace', $2::jsonb)
+      WHERE job_id = $1`,
+    [jobId, JSON.stringify(stages)],
+  );
+}
+
+export async function getJobInspectorTrace(jobId: string): Promise<InspectorStageRecord[]> {
+  const result = await db.query<{ metadata: unknown }>(
+    `SELECT metadata
+       FROM job_inputs
+      WHERE job_id = $1
+      LIMIT 1`,
+    [jobId],
+  );
+  if (!result.rowCount || !result.rows[0]) {
+    return [];
+  }
+  const metadata = (result.rows[0].metadata as Record<string, unknown>) ?? {};
+  const raw = metadata.inspector_trace;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      stage: String(item.stage ?? "normalization") as InspectorStageName,
+      ts: typeof item.ts === "string" ? item.ts : new Date().toISOString(),
+      input: typeof item.input === "object" && item.input ? (item.input as Record<string, unknown>) : undefined,
+      output: typeof item.output === "object" && item.output ? (item.output as Record<string, unknown>) : undefined,
+      config: typeof item.config === "object" && item.config ? (item.config as Record<string, unknown>) : undefined,
+      notes: typeof item.notes === "string" ? item.notes : undefined,
+    }));
+}
+
 export async function getArtifactForDownload(
   jobId: string,
   fileName: string,
@@ -2143,17 +2288,4 @@ export async function getArtifactForDownload(
     expiresAt: result.rows[0].expires_at,
     type: result.rows[0].type,
   };
-}
-
-type JobEventRow = { created_at: string; stage: string; message: string };
-
-export async function listJobEvents(jobId: string): Promise<JobEventRow[]> {
-  const result = await db.query<JobEventRow>(
-    `SELECT created_at, stage, message
-       FROM job_events
-      WHERE job_id = $1
-      ORDER BY created_at ASC, id ASC`,
-    [jobId],
-  );
-  return result.rows;
 }

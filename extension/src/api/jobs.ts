@@ -5,7 +5,7 @@ import type {
   CreateTranscriptJobRequest,
   JobAcceptedResponse,
   JobArtifactsResponse,
-  JobEventsResponse,
+  JobInspectorResponse,
   JobStatusResponse,
   ParseRssRequest,
   ParseRssResponse,
@@ -60,7 +60,7 @@ export class JobsApi {
     return this.client.get(`/v1/jobs/${jobId}/artifacts`);
   }
 
-  getEvents(jobId: string): Promise<JobEventsResponse> {
-    return this.client.get(`/v1/jobs/${jobId}/events`);
+  getInspector(jobId: string): Promise<JobInspectorResponse> {
+    return this.client.get(`/v1/jobs/${jobId}/inspector`);
   }
 }

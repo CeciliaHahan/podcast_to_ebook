@@ -46,6 +46,6 @@ echo "Artifacts:"
 curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/artifacts"
 echo
 
-echo "Events:"
-curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/events"
+echo "Inspector:"
+curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/inspector"
 echo

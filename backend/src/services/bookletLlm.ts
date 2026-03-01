@@ -56,6 +56,30 @@ export type LlmBookletDraft = {
   appendixThemes: Array<{ name: string; quotes: LlmBookletQuote[] }>;
 };
 
+export type LlmInspectorRequest = {
+  endpoint: string;
+  model: string;
+  temperature: number;
+  timeoutMs: number;
+  inputMaxChars: number;
+  promptPreview: string;
+};
+
+export type LlmInspectorResponse = {
+  httpStatus: number;
+  rawContentPreview: string;
+  parseOk: boolean;
+  parsedChapterCount: number;
+  parsedTermCount: number;
+  parsedTldrCount: number;
+};
+
+export type LlmInspectorHooks = {
+  onRequest?: (data: LlmInspectorRequest) => void;
+  onResponse?: (data: LlmInspectorResponse) => void;
+  onError?: (message: string) => void;
+};
+
 function cleanText(input: string, maxLength = 220): string {
   return input
     .replace(/\{[^}]+\}/g, "")
@@ -317,8 +341,10 @@ export async function generateBookletDraftWithLlm(params: {
   chapterRanges: string[];
   chapterPlans: LlmChapterPlanHint[];
   transcriptText: string;
+  inspector?: LlmInspectorHooks;
 }): Promise<LlmBookletDraft | null> {
   if (!config.llmApiKey) {
+    params.inspector?.onError?.("Missing LLM API key.");
     return null;
   }
 
@@ -326,6 +352,10 @@ export async function generateBookletDraftWithLlm(params: {
   const timeout = setTimeout(() => controller.abort(), config.llmTimeoutMs);
   try {
     const transcriptText = params.transcriptText.slice(0, config.llmInputMaxChars);
+    const prompt = buildPrompt({
+      ...params,
+      transcriptText,
+    });
     const body = {
       model: config.llmModel,
       temperature: 0.2,
@@ -337,15 +367,22 @@ export async function generateBookletDraftWithLlm(params: {
         },
         {
           role: "user",
-          content: buildPrompt({
-            ...params,
-            transcriptText,
-          }),
+          content: prompt,
         },
       ],
     };
 
-    const response = await fetch(`${config.llmBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+    const endpoint = `${config.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+    params.inspector?.onRequest?.({
+      endpoint,
+      model: config.llmModel,
+      temperature: body.temperature,
+      timeoutMs: config.llmTimeoutMs,
+      inputMaxChars: config.llmInputMaxChars,
+      promptPreview: prompt.slice(0, 5000),
+    });
+
+    const response = await fetch(endpoint, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -356,6 +393,7 @@ export async function generateBookletDraftWithLlm(params: {
     });
 
     if (!response.ok) {
+      params.inspector?.onError?.(`LLM HTTP ${response.status}`);
       return null;
     }
 
@@ -364,17 +402,37 @@ export async function generateBookletDraftWithLlm(params: {
     };
     const content = payload.choices?.[0]?.message?.content;
     if (typeof content !== "string" || !content.trim()) {
+      params.inspector?.onError?.("LLM response contained no content.");
       return null;
     }
 
     const jsonCandidate = extractFirstJsonObject(content);
     if (!jsonCandidate) {
+      params.inspector?.onResponse?.({
+        httpStatus: response.status,
+        rawContentPreview: content.slice(0, 5000),
+        parseOk: false,
+        parsedChapterCount: 0,
+        parsedTermCount: 0,
+        parsedTldrCount: 0,
+      });
       return null;
     }
 
     const parsed = JSON.parse(jsonCandidate) as unknown;
-    return readDraftFromUnknown(parsed);
-  } catch {
+    const draft = readDraftFromUnknown(parsed);
+    params.inspector?.onResponse?.({
+      httpStatus: response.status,
+      rawContentPreview: content.slice(0, 5000),
+      parseOk: Boolean(draft),
+      parsedChapterCount: draft?.chapters.length ?? 0,
+      parsedTermCount: draft?.terms.length ?? 0,
+      parsedTldrCount: draft?.tldr.length ?? 0,
+    });
+    return draft;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown LLM exception";
+    params.inspector?.onError?.(errorMessage);
     return null;
   } finally {
     clearTimeout(timeout);

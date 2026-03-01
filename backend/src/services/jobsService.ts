@@ -1,6 +1,14 @@
 import { ApiError } from "../lib/errors.js";
-import { countActiveJobs, countDailyJobs, createJob } from "../repositories/jobsRepo.js";
-import { enqueueJob } from "./jobQueue.js";
+import {
+  countActiveJobs,
+  countDailyJobs,
+  createArtifacts,
+  createJob,
+  failStaleActiveJobs,
+  setJobInspectorTrace,
+  updateJobStatusAndStage,
+} from "../repositories/jobsRepo.js";
+import type { InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
 import type { CreateJobInput, OutputFormat, SourceType } from "../types/domain.js";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -8,6 +16,7 @@ const MAX_AUDIO_BYTES = 300 * 1024 * 1024;
 const MAX_AUDIO_SECONDS = 180 * 60;
 const MAX_ACTIVE_JOBS_PER_USER = 2;
 const MAX_DAILY_JOBS_PER_USER = 10;
+const ACTIVE_JOB_STALE_TIMEOUT_MINUTES = 15;
 const DEFAULT_TEMPLATE_ID = "templateA-v0-book";
 
 const ACCEPTANCE_COPY =
@@ -20,7 +29,14 @@ function assertCompliance(input: { for_personal_or_authorized_use_only: boolean;
 }
 
 async function assertUserQuota(userId: string) {
-  const [active, daily] = await Promise.all([countActiveJobs(userId), countDailyJobs(userId)]);
+  const [daily, initialActive] = await Promise.all([countDailyJobs(userId), countActiveJobs(userId)]);
+  let active = initialActive;
+  if (active >= MAX_ACTIVE_JOBS_PER_USER) {
+    const reclaimed = await failStaleActiveJobs(userId, ACTIVE_JOB_STALE_TIMEOUT_MINUTES);
+    if (reclaimed > 0) {
+      active = await countActiveJobs(userId);
+    }
+  }
   if (active >= MAX_ACTIVE_JOBS_PER_USER) {
     throw new ApiError(429, "ACTIVE_JOB_LIMIT_EXCEEDED", "Too many active jobs. Try again later.");
   }
@@ -37,7 +53,98 @@ function normalizeOutputFormats(formats: OutputFormat[]): OutputFormat[] {
   return unique;
 }
 
-async function createAndQueueJob(params: {
+function previewText(input: string, maxChars = 3000): string {
+  if (input.length <= maxChars) {
+    return input;
+  }
+  return `${input.slice(0, maxChars)}\n... <truncated>`;
+}
+
+async function runPipelineInline(params: {
+  jobId: string;
+  sourceType: SourceType;
+  title?: string;
+  language?: string;
+  templateId: string;
+  outputFormats: OutputFormat[];
+  sourceRef?: string;
+  rawInput: CreateJobInput["rawInput"];
+}) {
+  const stages: InspectorStageRecord[] = [];
+  const pushStage = (stage: InspectorPushInput) => {
+    stages.push({
+      ...stage,
+      ts: new Date().toISOString(),
+    });
+  };
+
+  const transcriptText =
+    typeof params.rawInput.metadata?.transcript_text === "string" ? params.rawInput.metadata.transcript_text : "";
+
+  pushStage({
+    stage: "transcript",
+    input: {
+      source_type: params.sourceType,
+      source_ref: params.sourceRef ?? null,
+      transcript_chars: transcriptText.length,
+      transcript_preview: previewText(transcriptText, 2500),
+    },
+    config: {
+      template_id: params.templateId,
+      output_formats: params.outputFormats,
+    },
+    notes:
+      transcriptText.length > 0
+        ? undefined
+        : "No transcript text present in this input; downstream stages run with empty transcript body.",
+  });
+
+  await updateJobStatusAndStage({
+    jobId: params.jobId,
+    status: "processing",
+    stage: "pipeline",
+    progress: 35,
+  });
+
+  try {
+    await createArtifacts({
+      jobId: params.jobId,
+      formats: params.outputFormats,
+      title: params.title ?? "Podcast Notes",
+      language: params.language ?? "zh-CN",
+      transcriptText,
+      templateId: params.templateId,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      inspector: pushStage,
+    });
+
+    await updateJobStatusAndStage({
+      jobId: params.jobId,
+      status: "succeeded",
+      stage: "completed",
+      progress: 100,
+    });
+  } catch (error) {
+    pushStage({
+      stage: "normalization",
+      notes: `Pipeline failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    });
+    await updateJobStatusAndStage({
+      jobId: params.jobId,
+      status: "failed",
+      stage: "failed",
+      progress: 100,
+      errorCode: "GENERATION_FAILED",
+      errorMessage: error instanceof Error ? error.message : "Unknown processing error",
+    });
+    throw error;
+  } finally {
+    await setJobInspectorTrace(params.jobId, stages);
+  }
+}
+
+async function createAndRunJob(params: {
   userId: string;
   sourceType: SourceType;
   title?: string;
@@ -55,13 +162,17 @@ async function createAndQueueJob(params: {
 }) {
   await assertUserQuota(params.userId);
   assertCompliance(params.compliance);
+
+  const resolvedTemplateId = params.templateId ?? DEFAULT_TEMPLATE_ID;
+  const outputFormats = normalizeOutputFormats(params.outputFormats);
+
   const job = await createJob({
     userId: params.userId,
     sourceType: params.sourceType,
     title: params.title,
     language: params.language,
-    templateId: params.templateId ?? DEFAULT_TEMPLATE_ID,
-    outputFormats: normalizeOutputFormats(params.outputFormats),
+    templateId: resolvedTemplateId,
+    outputFormats,
     sourceRef: params.sourceRef,
     inputCharCount: params.inputCharCount,
     inputDurationSeconds: params.inputDurationSeconds,
@@ -76,7 +187,19 @@ async function createAndQueueJob(params: {
     idempotencyKey: params.idempotencyKey,
   });
 
-  void enqueueJob(job.jobId, params.sourceType);
+  if (job.status === "queued") {
+    await runPipelineInline({
+      jobId: job.jobId,
+      sourceType: params.sourceType,
+      title: params.title,
+      language: params.language,
+      templateId: resolvedTemplateId,
+      outputFormats,
+      sourceRef: params.sourceRef,
+      rawInput: params.rawInput,
+    });
+  }
+
   return job;
 }
 
@@ -97,7 +220,7 @@ export async function createTranscriptJob(params: {
     throw new ApiError(400, "INVALID_INPUT", `Transcript exceeds ${MAX_TRANSCRIPT_CHARS} characters.`);
   }
 
-  return createAndQueueJob({
+  return createAndRunJob({
     userId: params.userId,
     sourceType: "transcript",
     title: params.title,
@@ -131,7 +254,7 @@ export async function createRssJob(params: {
   userAgent?: string | null;
   idempotencyKey?: string | null;
 }) {
-  return createAndQueueJob({
+  return createAndRunJob({
     userId: params.userId,
     sourceType: "rss",
     templateId: params.templateId,
@@ -158,7 +281,7 @@ export async function createLinkJob(params: {
   userAgent?: string | null;
   idempotencyKey?: string | null;
 }) {
-  return createAndQueueJob({
+  return createAndRunJob({
     userId: params.userId,
     sourceType: "link",
     templateId: params.templateId,
@@ -195,7 +318,7 @@ export async function createAudioJob(params: {
     throw new ApiError(400, "AUDIO_TOO_LONG", "Audio exceeds 180 minutes.");
   }
 
-  return createAndQueueJob({
+  return createAndRunJob({
     userId: params.userId,
     sourceType: "audio",
     title: params.title,

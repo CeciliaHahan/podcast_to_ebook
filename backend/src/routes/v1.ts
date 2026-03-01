@@ -3,7 +3,7 @@ import multer from "multer";
 import { z } from "zod";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
-import { getJobById, listArtifacts, listJobEvents } from "../repositories/jobsRepo.js";
+import { getJobById, getJobInspectorTrace, listArtifacts } from "../repositories/jobsRepo.js";
 import {
   createAudioJob,
   createLinkJob,
@@ -276,21 +276,17 @@ router.get(
 );
 
 router.get(
-  "/jobs/:job_id/events",
+  "/jobs/:job_id/inspector",
   asyncHandler(async (req, res) => {
     const user = getUser(req);
     const job = await getJobById(req.params.job_id, user.id);
     if (!job) {
       throw new ApiError(404, "NOT_FOUND", "Job not found.");
     }
-    const events = await listJobEvents(job.id);
+    const stages = await getJobInspectorTrace(job.id);
     res.status(200).json({
       job_id: job.id,
-      events: events.map((event) => ({
-        ts: event.created_at,
-        stage: event.stage,
-        message: event.message,
-      })),
+      stages,
     });
   }),
 );

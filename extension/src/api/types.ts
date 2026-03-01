@@ -86,12 +86,15 @@ export type JobArtifactsResponse = {
   };
 };
 
-export type JobEventsResponse = {
+export type JobInspectorResponse = {
   job_id: string;
-  events: Array<{
-    ts: string;
+  stages: Array<{
     stage: string;
-    message: string;
+    ts: string;
+    input?: Record<string, unknown>;
+    output?: Record<string, unknown>;
+    config?: Record<string, unknown>;
+    notes?: string;
   }>;
 };
 
