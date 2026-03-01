@@ -60,6 +60,21 @@ function previewText(input: string, maxChars = 3000): string {
   return `${input.slice(0, maxChars)}\n... <truncated>`;
 }
 
+function sanitizeArtifactTitle(input: string | undefined, fallback = "Podcast Notes"): string {
+  const raw = (input ?? "").trim();
+  if (!raw) {
+    return fallback;
+  }
+  const clean = raw
+    .replace(/^\s*(?:>\s*)?[#]{1,6}\s*/, "")
+    .replace(/^\s*[\-\*•]\s*/, "")
+    .replace(/^\s*[\*_"'`~]{1,3}\s*/, "")
+    .replace(/\s*[\*_"'`~]{1,3}\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean || fallback;
+}
+
 async function runPipelineInline(params: {
   jobId: string;
   sourceType: SourceType;
@@ -163,13 +178,14 @@ async function createAndRunJob(params: {
   await assertUserQuota(params.userId);
   assertCompliance(params.compliance);
 
+  const resolvedTitle = sanitizeArtifactTitle(params.title, "Podcast Notes");
   const resolvedTemplateId = params.templateId ?? DEFAULT_TEMPLATE_ID;
   const outputFormats = normalizeOutputFormats(params.outputFormats);
 
   const job = await createJob({
     userId: params.userId,
     sourceType: params.sourceType,
-    title: params.title,
+    title: resolvedTitle,
     language: params.language,
     templateId: resolvedTemplateId,
     outputFormats,
@@ -191,7 +207,7 @@ async function createAndRunJob(params: {
     await runPipelineInline({
       jobId: job.jobId,
       sourceType: params.sourceType,
-      title: params.title,
+      title: resolvedTitle,
       language: params.language,
       templateId: resolvedTemplateId,
       outputFormats,

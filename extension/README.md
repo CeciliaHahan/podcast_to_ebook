@@ -3,7 +3,7 @@
 This extension provides the V1 transcript workflow:
 
 - configure API URL + bearer token
-- submit transcript job
+- submit transcript job (EPUB output only)
 - poll job status
 - view artifacts and stage-by-stage inspector trace
 
@@ -25,5 +25,5 @@ This extension provides the V1 transcript workflow:
 
 ## Notes
 
-- Current UI is transcript-first (other input modes will be added in next iterations).
+- Current UI is transcript-first and EPUB-only (PDF/Markdown can be added back later).
 - Settings and last job id are saved in `chrome.storage.local`.

@@ -12,105 +12,91 @@
     <main class="layout">
       <header class="card hero">
         <p class="eyebrow">Workspace</p>
-        <h1>Transcript to Ebook</h1>
-        <p class="subtitle">V1 focuses on transcript input with async job tracking and multi-format export.</p>
+        <h1>Transcript to EPUB</h1>
+        <p class="subtitle">Simple flow: transcript in, EPUB out, with stage-by-stage inspector visibility.</p>
       </header>
-      <div class="card top-tabs">
-        <button id="top-tab-workspace" class="top-tab-btn active" type="button" aria-selected="true">Workspace</button>
-        <button id="top-tab-payload" class="top-tab-btn" type="button" aria-selected="false">Payload Inspector</button>
-      </div>
 
-      <div id="workspace-root" class="workspace-root">
-        <section class="card settings">
-          <h2>Connection</h2>
+      <section class="card settings">
+        <h2>Connection</h2>
+        <div class="grid">
+          <label>
+            API Base URL
+            <input id="api-base-url" type="url" placeholder="http://localhost:8080" />
+          </label>
+          <label>
+            Bearer Token
+            <input id="api-token" type="text" placeholder="dev:cecilia@example.com" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save-settings" type="button">Save Settings</button>
+          <button id="load-sample" type="button" class="ghost">Load Sample Transcript</button>
+        </div>
+        <p id="settings-feedback" class="feedback" aria-live="polite"></p>
+      </section>
+
+      <section class="card composer">
+        <h2>Create EPUB Job (Transcript)</h2>
+        <form id="transcript-form">
           <div class="grid">
             <label>
-              API Base URL
-              <input id="api-base-url" type="url" placeholder="http://localhost:8080" />
+              Episode Title
+              <input id="title" type="text" maxlength="300" placeholder="Leave blank to auto-generate" />
+              <span class="micro-hint">If empty, title is generated from transcript.</span>
             </label>
             <label>
-              Bearer Token
-              <input id="api-token" type="text" placeholder="dev:cecilia@example.com" />
+              Language
+              <input id="language" type="text" value="zh-CN" required />
             </label>
           </div>
-          <div class="actions">
-            <button id="save-settings" type="button">Save Settings</button>
-            <button id="load-sample" type="button" class="ghost">Load Sample Transcript</button>
-          </div>
-          <p id="settings-feedback" class="feedback" aria-live="polite"></p>
-        </section>
-
-        <section class="card composer">
-          <h2>Create Job (Transcript)</h2>
-          <form id="transcript-form">
-            <div class="grid">
-              <label>
-                Episode Title
-                <input id="title" type="text" maxlength="300" placeholder="Leave blank to auto-generate" />
-                <span class="micro-hint">If empty, title is generated from transcript.</span>
-              </label>
-              <label>
-                Language
-                <input id="language" type="text" value="zh-CN" required />
-              </label>
-            </div>
-            <div class="grid">
-              <label>
-                Template ID
-                <input id="template-id" type="text" value="templateA-v0-book" />
-              </label>
-              <label>
-                Episode URL (optional)
-                <input id="episode-url" type="url" placeholder="https://example.com/episode/1" />
-              </label>
-            </div>
+          <div class="grid">
             <label>
-              Transcript
-              <textarea id="transcript-text" required maxlength="120000"></textarea>
+              Template ID
+              <input id="template-id" type="text" value="templateA-v0-book" />
             </label>
-            <div class="checks">
-              <label><input id="check-personal" type="checkbox" checked /> Personal/authorized use only</label>
-              <label><input id="check-noncommercial" type="checkbox" checked /> No commercial use</label>
-            </div>
-            <button id="submit-job" type="submit">Generate EPUB / PDF / Markdown</button>
-          </form>
-        </section>
-
-        <section class="card status">
-          <h2>Job Status</h2>
-          <div class="status-line">
-            <span>Current Job</span>
-            <code id="job-id">-</code>
+            <label>
+              Episode URL (optional)
+              <input id="episode-url" type="url" placeholder="https://example.com/episode/1" />
+            </label>
           </div>
-          <div class="status-grid">
-            <p><strong>Status:</strong> <span id="job-status">idle</span></p>
-            <p><strong>Stage:</strong> <span id="job-stage">-</span></p>
-            <p><strong>Progress:</strong> <span id="job-progress">0%</span></p>
+          <label>
+            Transcript
+            <textarea id="transcript-text" required maxlength="120000"></textarea>
+          </label>
+          <p class="format-pill">Output format is fixed to: <strong>EPUB</strong></p>
+          <div class="checks">
+            <label><input id="check-personal" type="checkbox" checked /> Personal/authorized use only</label>
+            <label><input id="check-noncommercial" type="checkbox" checked /> No commercial use</label>
           </div>
-          <div class="meter">
-            <div id="meter-fill"></div>
-          </div>
-          <pre id="error-box" hidden></pre>
-        </section>
+          <button id="submit-job" type="submit">Generate EPUB</button>
+        </form>
+      </section>
 
-        <section class="card outputs">
-          <h2>Artifacts</h2>
-          <ul id="artifacts-list"></ul>
-        </section>
-
-        <section class="card events">
-          <h2>Inspector</h2>
-          <ul id="events-list"></ul>
-        </section>
-      </div>
-
-      <section id="payload-root" class="card payload-root" hidden>
-        <div class="payload-header">
-          <h2>Payload Inspector</h2>
-          <button id="clear-payload-logs" class="ghost mini-btn" type="button">Clear Logs</button>
+      <section class="card status">
+        <h2>Job Status</h2>
+        <div class="status-line">
+          <span>Current Job</span>
+          <code id="job-id">-</code>
         </div>
-        <p class="payload-hint">Shows each backend API call request and response in readable form.</p>
-        <ul id="payload-list"></ul>
+        <div class="status-grid">
+          <p><strong>Status:</strong> <span id="job-status">idle</span></p>
+          <p><strong>Stage:</strong> <span id="job-stage">-</span></p>
+          <p><strong>Progress:</strong> <span id="job-progress">0%</span></p>
+        </div>
+        <div class="meter">
+          <div id="meter-fill"></div>
+        </div>
+        <pre id="error-box" hidden></pre>
+      </section>
+
+      <section class="card outputs">
+        <h2>Artifacts</h2>
+        <ul id="artifacts-list"></ul>
+      </section>
+
+      <section class="card events">
+        <h2>Inspector</h2>
+        <ul id="events-list"></ul>
       </section>
     </main>
     <script src="./sidepanel.js" type="module"></script>

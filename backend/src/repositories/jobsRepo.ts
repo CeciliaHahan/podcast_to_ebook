@@ -846,10 +846,29 @@ function normalizeSpeaker(raw: string): string {
   return normalized;
 }
 
+function stripTranscriptLineDecorators(input: string): string {
+  let line = cleanLine(input);
+  line = line.replace(/^\s*(?:[-*•]\s+)/, "");
+  line = line.replace(/^\s*(?:>\s*)?#{1,6}\s*/, "");
+  line = line.replace(/^\s*[0-9]+\s*[.)]\s+/, "");
+  line = line.replace(/^\s*[一二三四五六七八九十百千万]+\s*[、.]\s+/, "");
+  line = line.replace(/^\s*[\*_"'`~]{1,3}\s*/g, "");
+  line = line.replace(/\s*[\*_"'`~]{1,3}\s*$/g, "");
+  return line;
+}
+
+function isMarkdownStructuralLine(input: string): boolean {
+  const line = cleanLine(input);
+  return /^#{1,6}(?:\s|$)/.test(line) || /^\s*[-*•]+\s*#{1,6}(?:\s|$)/.test(line);
+}
+
 function sanitizeSentence(input: string): string {
+  const stripped = stripTranscriptLineDecorators(input);
   return cleanLine(
-    input
-      .replace(/^[\-\*•]+/, "")
+    stripped
+      .replace(/^[\-\*•]+\s*/, "")
+      .replace(/^(Speaker|主持人|嘉宾|主播)\s*[,:：]?\s*/, "")
+      .replace(/^\d+\s*[.)]\s*/, "")
       .replace(/^(嗯+|啊+|呃+|诶+)\s*/i, "")
       .replace(/^(哈哈)+[哈]*\s*/i, "")
       .replace(/^(然后|就是|但是|所以|对|然后就是|我觉得|其实)\s*/i, ""),
@@ -857,6 +876,9 @@ function sanitizeSentence(input: string): string {
 }
 
 function isMeaningfulSentence(input: string): boolean {
+  if (isMarkdownStructuralLine(input)) {
+    return false;
+  }
   const line = sanitizeSentence(input);
   if (line.length < 8) {
     return false;
@@ -922,6 +944,7 @@ function parseTranscriptEntries(transcriptText: string): TranscriptEntry[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((line) => !isMarkdownStructuralLine(line))
     .filter((line) => !/^(keywords|transcript)\s*:?$/i.test(line))
     .filter((line) => !isLikelyKeywordList(line))
     .filter((line) => !/^\d{4}-\d{2}-\d{2}/.test(line) || !/cst|h\s*\d+\s*min/i.test(line));
@@ -948,8 +971,10 @@ function parseTranscriptEntries(transcriptText: string): TranscriptEntry[] {
     pendingText = [];
   };
 
-  const speakerMarkerWithInline = /^(Speaker\s*\d+)\s+(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$/i;
-  const speakerMarkerOnly = /^(Speaker\s*\d+)\s+(\d{1,2}:\d{2}(?::\d{2})?)$/i;
+  const speakerMarkerWithInline =
+    /^(Speaker\s*\d+|主持人|嘉宾|主播|Host|Guest)\s*[:：]?\s+(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$/i;
+  const speakerMarkerOnly =
+    /^(Speaker\s*\d+|主持人|嘉宾|主播|Host|Guest)\s*[:：]?\s+(\d{1,2}:\d{2}(?::\d{2})?)$/i;
   const genericMarkerOnly = /^([^0-9][^\s]{0,18})\s+(\d{1,2}:\d{2}(?::\d{2})?)$/;
 
   for (const line of lines) {
@@ -1257,6 +1282,10 @@ function cleanBookletField(input: string, maxLength: number): string {
   return cleanLine(input).replace(/^[，。！？、\-\s]+/, "").slice(0, maxLength).trim();
 }
 
+function cleanBookletTimestamp(input: string, maxLength: number): string {
+  return cleanLine(input).slice(0, maxLength).trim();
+}
+
 function chooseListWithFallback(
   preferred: string[],
   fallback: string[],
@@ -1293,7 +1322,7 @@ function chooseQuoteListWithFallback(
     quotes
       .map((quote) => ({
         speaker: cleanBookletField(quote.speaker || FALLBACK_SPEAKER, 32) || FALLBACK_SPEAKER,
-        timestamp: cleanBookletField(quote.timestamp || FALLBACK_TIMESTAMP, 20) || FALLBACK_TIMESTAMP,
+        timestamp: cleanBookletTimestamp(quote.timestamp || FALLBACK_TIMESTAMP, 20) || FALLBACK_TIMESTAMP,
         text: cleanBookletField(quote.text, 200),
       }))
       .filter((quote) => quote.text);

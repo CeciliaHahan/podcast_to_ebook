@@ -1,5 +1,54 @@
 # TODO
 
+## Current Task: Simplify Extension To EPUB-Only Flow (2026-03-01)
+
+### Plan
+
+- [x] Rewrite Side Panel UI to a single workspace view (remove payload tab surface).
+- [x] Keep transcript workflow but force output format to EPUB only.
+- [x] Update form/button copy to EPUB-only language.
+- [x] Keep inspector visibility (`/v1/jobs/:job_id/inspector`) and artifacts panel.
+- [x] Remove extension-side payload log complexity from `sidepanel.js`.
+- [x] Update extension docs to reflect EPUB-only mode.
+- [x] Verify extension script syntax and backend health/startup.
+
+### Review
+
+- Rewrote `extension/sidepanel/sidepanel.html` into a single-page EPUB-focused layout (removed payload tab section and controls).
+- Rewrote `extension/sidepanel/sidepanel.js` to a leaner flow:
+- kept connection/settings, job submit, status poll, artifacts, inspector;
+- removed payload logging/tab state code;
+- forced request payload to `output_formats: [\"epub\"]`;
+- updated submit copy to `Generate EPUB`.
+- Simplified `extension/sidepanel/sidepanel.css` by removing unused payload/tab styles and adding EPUB format hint styling.
+- Updated `extension/README.md` to document EPUB-only mode for now.
+- Validation:
+- `node --check extension/sidepanel/sidepanel.js` passed.
+- backend health/startup handled at end of task (see session startup in assistant execution).
+
+## Current Task: Improve EPUB Source Quality (2026-03-01)
+
+### Plan
+
+- [x] Add transcript parser cleanup for markdown headings/list markers before parsing entries.
+- [x] Skip heading-only transcript lines so they don’t become quote/point content.
+- [x] Remove markdown emphasis markers from normalized sentence text (`##`, `####`, trailing `**`, list bullets).
+- [x] Sanitize auto-generated title in sidepanel so markdown-like tokens don’t leak into EPUB `<dc:title>`.
+- [x] Run targeted checks (typecheck + transcript sample flow with heading-heavy input) and report results.
+
+### Review
+
+- `backend/src/repositories/jobsRepo.ts`
+  - Added markdown/heading/list cleanup in parsing path: `stripTranscriptLineDecorators`, `isMarkdownStructuralLine`, updated `sanitizeSentence`, updated `parseTranscriptEntries` filtering and marker patterns.
+  - Fixed fallback timestamp rendering so `--:--` is preserved with `cleanBookletTimestamp`.
+- `backend/src/services/jobsService.ts`
+  - Added title normalization (`sanitizeArtifactTitle`) before storing and using titles in job records/render.
+- `extension/sidepanel/sidepanel.js`
+  - Sanitized auto-generated title with markdown/title-marker cleanup before job submission.
+- Validation
+  - `cd backend && npm run typecheck` passed.
+  - Created a heading-heavy sample transcript job and verified generated EPUB metadata/title and Markdown quotes no longer carry raw markdown heading text.
+
 ## Current Task: Simplify Backend Pipeline + Add Stage Inspector (2026-03-01)
 
 ### Plan
