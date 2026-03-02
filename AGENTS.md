@@ -9,6 +9,13 @@ This project is for one user. Keep all work simple, direct, and low-overhead.
 3. Add complexity only when it is truly needed.
 4. Teach while doing: explain fundamentals and terms, not just steps.
 
+## Git Workflow
+
+1. Use atomic commits: each commit should contain one clear, cohesive change.
+2. Keep commits small and focused; split mixed work (for example docs + refactor) into separate commits.
+3. Use concise, action-oriented commit messages that describe intent.
+4. Push directly to `origin/main` for completed work in this repo (single-user workflow; no feature branch required).
+
 ## Default Workflow
 
 1. Understand the request and read only relevant files.
