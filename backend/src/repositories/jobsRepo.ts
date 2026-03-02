@@ -11,7 +11,7 @@ import { db } from "../db/pool.js";
 import { createId } from "../lib/ids.js";
 import type { CreateJobInput, JobStatus, OutputFormat, SourceType } from "../types/domain.js";
 import { config } from "../config.js";
-import { generateBookletDraftWithLlm } from "../services/bookletLlm.js";
+import { generateBookletDraftWithLlm, generateChapterPatchWithLlm, type LlmChapterPatch } from "../services/bookletLlm.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -71,6 +71,8 @@ export type InspectorStageRecord = {
 };
 
 export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;
+export type GenerationMethod = "A" | "B" | "C";
+type TranscriptSourceProfile = "single" | "interview" | "discussion";
 
 const CJK_FONT_CANDIDATES = [
   path.resolve(process.cwd(), "../assets/fonts/NotoSansCJKsc-Regular.otf"),
@@ -392,13 +394,6 @@ type SemanticSegment = {
   signals: string[];
 };
 
-type TopicTemplate = {
-  title: string;
-  intent: string;
-  keywords: string[];
-  actions: string[];
-};
-
 type ChapterPlanItem = {
   chapterIndex: number;
   title: string;
@@ -408,7 +403,6 @@ type ChapterPlanItem = {
   startIndex: number;
   endIndex: number;
   signals: string[];
-  topic: TopicTemplate | null;
   topicKeywords: string[];
 };
 
@@ -433,6 +427,295 @@ const MIN_CHAPTER_COUNT = 5;
 const MAX_CHAPTER_COUNT = 7;
 const SEGMENT_MIN_ENTRIES = 8;
 const SEGMENT_TIME_GAP_SECONDS = 4 * 60;
+const PROFILE_RESOLVED_NAME: Record<TranscriptSourceProfile, string> = {
+  single: "single",
+  interview: "interview",
+  discussion: "discussion",
+};
+const PLACEHOLDER_TOKEN_RE = /\\{[A-Z0-9_]+\\}/g;
+const QUESTION_PATTERN = /(\\?|？|想问|请问|我想问|你觉得|你认为|为什么|怎么|what|how|why|which|could|do you|would you)/i;
+const DISCUSSION_PATTERNS = /(不同意|反驳|补充|我补充|插话|我来补充|先不急|再想想|你刚才|偏差|误解|我补充)/;
+const INTERVIEW_QUERY_MARKERS = /(想听听|你能|我先问|我有个问题|能不能先|接着问|接下来问|继续问|最后再问|主持人|嘉宾|guest)/i;
+
+type ProfileProfileSignals = {
+  speakerCount: number;
+  turns: number;
+  questionRatio: number;
+  turnRate: number;
+  topSpeakerShare: number;
+  interviewSignals: number;
+  discussionSignals: number;
+};
+
+type TranscriptProfile = {
+  sourceProfile: TranscriptSourceProfile;
+  confidence: number;
+  signals: ProfileProfileSignals;
+};
+
+function resolveSpeakerKey(raw: string): string {
+  return cleanLine(raw).toLowerCase().replace(/\s+/g, "");
+}
+
+function classifyTranscriptSourceProfile(entries: TranscriptEntry[], transcriptText: string): TranscriptProfile {
+  const normalizedEntries = entries.filter((entry) => isMeaningfulSentence(entry.text));
+  const entryCount = normalizedEntries.length;
+
+  if (entryCount === 0) {
+    return {
+      sourceProfile: "single",
+      confidence: 0.62,
+      signals: {
+        speakerCount: 1,
+        turns: 0,
+        questionRatio: 0,
+        turnRate: 0,
+        topSpeakerShare: 1,
+        interviewSignals: 0,
+        discussionSignals: 0,
+      },
+    };
+  }
+
+  const speakerCounter = new Map<string, number>();
+  const speakersSeen = new Set<string>();
+  let turns = 0;
+  let previousSpeaker: string | undefined;
+  let interviewSignals = 0;
+  let discussionSignals = 0;
+  let questionCount = 0;
+
+  for (const entry of normalizedEntries) {
+    const key = resolveSpeakerKey(entry.speaker || FALLBACK_SPEAKER);
+    speakersSeen.add(key);
+    speakerCounter.set(key, (speakerCounter.get(key) ?? 0) + 1);
+    if (key !== previousSpeaker && previousSpeaker !== undefined) {
+      turns += 1;
+    }
+    previousSpeaker = key;
+
+    if (QUESTION_PATTERN.test(entry.text)) {
+      questionCount += 1;
+    }
+    if (INTERVIEW_QUERY_MARKERS.test(entry.text)) {
+      interviewSignals += 1;
+    }
+    if (DISCUSSION_PATTERNS.test(entry.text)) {
+      discussionSignals += 1;
+    }
+  }
+
+  const questionRatio = questionCount / entryCount;
+  const turnRate = turns / Math.max(1, entryCount - 1);
+  const speakerCount = Math.max(1, speakersSeen.size);
+  const topSpeakerShare = speakerCounter.size === 0 ? 1 : Math.max(...speakerCounter.values()) / entryCount;
+  const normalizedInterviewSignals = interviewSignals / entryCount;
+  const normalizedDiscussionSignals = discussionSignals / entryCount;
+  const bodySignals = extractTranscriptBody(transcriptText).toLowerCase();
+  const bodyInterleaveScore = /\n(我|你|他|她|我们|你们|他们)\s*[：:]/g.test(bodySignals) ? 1 : 0.6;
+
+  const scores: Record<TranscriptSourceProfile, number> = {
+    single: 1.4 + topSpeakerShare * 2 + Math.max(0, 0.18 - questionRatio) * 2.5 + bodyInterleaveScore * 0.5,
+    interview:
+      1 + questionRatio * 1.2 + normalizedInterviewSignals * 2.4 + (speakerCount > 1 ? 1.7 : 0) + Math.min(1, topSpeakerShare) * 0.5,
+    discussion:
+      1.5 +
+      turnRate * 3.4 +
+      questionRatio * 1.5 +
+      normalizedDiscussionSignals * 2.8 +
+      Math.min(1, speakerCount / 2) +
+      (speakerCount >= 2 ? 1 : 0),
+  };
+
+  if (speakerCount <= 1) {
+    scores.single += 1.2;
+    scores.interview -= 0.8;
+    scores.discussion -= 1.1;
+  } else if (speakerCount === 2) {
+    scores.interview += 0.8;
+  } else {
+    scores.interview += 1;
+    scores.discussion += 1;
+  }
+
+  const sorted = (Object.entries(scores) as Array<[TranscriptSourceProfile, number]>).sort((a, b) => b[1] - a[1]);
+  const winner = sorted[0];
+  const loser = sorted[1];
+  const spread = winner[1] - loser[1];
+  let confidence = 0.5 + Math.min(0.44, Math.max(0, spread / 3));
+  if (entryCount < 12) {
+    confidence -= 0.12;
+  }
+  confidence = Number(Math.max(0.5, Math.min(0.96, confidence)).toFixed(2));
+
+  return {
+    sourceProfile: winner[0],
+    confidence,
+    signals: {
+      speakerCount,
+      turns,
+      questionRatio: Number(questionRatio.toFixed(3)),
+      turnRate: Number(turnRate.toFixed(3)),
+      topSpeakerShare: Number(topSpeakerShare.toFixed(3)),
+      interviewSignals: Number(normalizedInterviewSignals.toFixed(3)),
+      discussionSignals: Number(normalizedDiscussionSignals.toFixed(3)),
+    },
+  };
+}
+
+function containsUnresolvedTemplatePlaceholder(value: string): boolean {
+  return PLACEHOLDER_TOKEN_RE.test(value);
+}
+
+function countModelQualityIssues(model: BookletModel): string[] {
+  const issues: string[] = [];
+  if (!model.chapters.length) {
+    return ["no_chapters"];
+  }
+
+  const chapterIds = new Set(model.chapters.map((chapter) => chapter.index));
+  const expectedChapterIndices = Array.from({ length: model.chapters.length }, (_, index) => index + 1);
+  for (const expected of expectedChapterIndices) {
+    if (!chapterIds.has(expected)) {
+      issues.push(`missing_chapter_index:${expected}`);
+    }
+  }
+
+  const expectedSectionIds = new Set<string>(
+    model.chapters.map((chapter) => `chap_${String(chapter.index + 3).padStart(2, "0")}`),
+  );
+  const seenSectionIds = new Set<string>();
+  for (const chapter of model.chapters) {
+    if (!chapter.title || chapter.title.length < 2) {
+      issues.push(`chapter_title_too_short:${chapter.index}`);
+    }
+    if (!chapter.range) {
+      issues.push(`chapter_range_missing:${chapter.index}`);
+    }
+    if (chapter.points.length < 2) {
+      issues.push(`chapter_points_sparse:${chapter.index}`);
+    }
+    if (chapter.quotes.length < 2) {
+      issues.push(`chapter_quotes_sparse:${chapter.index}`);
+    }
+    if (chapter.actions.length < 1) {
+      issues.push(`chapter_actions_missing:${chapter.index}`);
+    }
+    const expectedSectionId = `chap_${String(chapter.index + 3).padStart(2, "0")}`;
+    if (chapter.sectionId !== expectedSectionId) {
+      issues.push(`chapter_section_id_mismatch:${chapter.index}`);
+    }
+    if (seenSectionIds.has(chapter.sectionId)) {
+      issues.push(`chapter_section_id_duplicate:${chapter.index}`);
+    }
+    seenSectionIds.add(chapter.sectionId);
+    if (!expectedSectionIds.has(chapter.sectionId)) {
+      issues.push(`chapter_section_id_not_indexed:${chapter.index}`);
+    }
+  }
+
+  if (model.chapters.length < MIN_CHAPTER_COUNT || model.chapters.length > MAX_CHAPTER_COUNT) {
+    issues.push(`chapter_count_out_of_range:${model.chapters.length}`);
+  }
+  if (model.appendixThemes.length < 2) {
+    issues.push(`appendix_theme_count_low:${model.appendixThemes.length}`);
+  }
+  for (const [index, theme] of model.appendixThemes.entries()) {
+    if (!theme.name || theme.name.length < 2) {
+      issues.push(`appendix_theme_name_missing:${index + 1}`);
+    }
+    if (!theme.quotes.length) {
+      issues.push(`appendix_theme_quotes_missing:${index + 1}`);
+    }
+  }
+
+  if (!model.meta.title || model.meta.title.length < 4) {
+    issues.push("meta_title_missing");
+  }
+  if (!model.meta.identifier || !model.meta.identifier.startsWith("urn:booklet:")) {
+    issues.push("meta_identifier_invalid");
+  }
+  if (!model.meta.language) {
+    issues.push("meta_language_missing");
+  }
+  if (languageToDc(model.meta.language) !== model.meta.dcLanguage) {
+    issues.push("meta_dc_language_mismatch");
+  }
+  if (!model.meta.generatedAtIso) {
+    issues.push("meta_generated_at_missing");
+  } else {
+    const dateFromIso = model.meta.generatedAtIso.slice(0, 10);
+    if (dateFromIso !== model.meta.generatedDate) {
+      issues.push(`meta_generated_date_mismatch:${model.meta.generatedDate}/${dateFromIso}`);
+    }
+  }
+  if (!model.meta.sourceType) {
+    issues.push("meta_source_type_missing");
+  }
+  if (!model.meta.sourceRef) {
+    issues.push("meta_source_ref_missing");
+  }
+  if (!model.meta.creator) {
+    issues.push("meta_creator_missing");
+  }
+
+  const actualSections = model.chapters.length + 7;
+  if (actualSections < 12 || actualSections > 14) {
+    issues.push(`template_section_count_unexpected:${actualSections}`);
+  }
+  if (model.suitableFor.length < 2) {
+    issues.push(`suitable_for_too_short:${model.suitableFor.length}`);
+  }
+  if (model.outcomes.length < 2) {
+    issues.push(`outcomes_too_short:${model.outcomes.length}`);
+  }
+  if (!model.oneLineConclusion) {
+    issues.push("one_line_conclusion_missing");
+  }
+  if (model.tldr.length < 3) {
+    issues.push(`tldr_too_short:${model.tldr.length}`);
+  }
+  if (model.tldr.length > 10) {
+    issues.push(`tldr_too_long:${model.tldr.length}`);
+  }
+  if (model.terms.length < 2) {
+    issues.push(`terms_too_few:${model.terms.length}`);
+  }
+  if ((model.actionNow.length + model.actionWeek.length + model.actionLong.length) < 4) {
+    issues.push("actions_total_too_few");
+  }
+
+  const flatText = [
+    model.meta.title,
+    model.meta.sourceType,
+    model.meta.sourceRef,
+    ...model.suitableFor,
+    ...model.outcomes,
+    model.oneLineConclusion,
+    ...model.tldr,
+    ...model.actionNow,
+    ...model.actionWeek,
+    ...model.actionLong,
+    ...model.terms.map((term) => `${term.term} ${term.definition}`),
+    ...model.appendixThemes.flatMap((theme) => [theme.name, ...theme.quotes.map((quote) => `${quote.speaker} ${quote.timestamp} ${quote.text}`)]),
+      ...model.chapters.flatMap((chapter) => [
+      chapter.title,
+      chapter.range,
+      ...chapter.points,
+      ...chapter.quotes.map((quote) => `${quote.speaker} ${quote.timestamp} ${quote.text}`),
+      chapter.explanation.background,
+      chapter.explanation.commonMisunderstanding,
+      chapter.explanation.coreConcept,
+      chapter.explanation.judgmentFramework,
+      ...chapter.actions,
+    ]),
+  ];
+
+  if (flatText.some((text) => containsUnresolvedTemplatePlaceholder(text))) {
+    issues.push("unresolved_template_token");
+  }
+  return issues;
+}
 const MERGE_CAPS = {
   suitableFor: 5,
   outcomes: 5,
@@ -447,7 +730,31 @@ const MERGE_CAPS = {
   appendixThemes: 4,
   appendixThemeQuotes: 6,
   draftTermsMin: 2,
-} as const;
+};
+const FULL_BOOK_LLM_MAX_CHARS = 32_000;
+const PROFILE_MERGE_CAPS: Record<TranscriptSourceProfile, typeof MERGE_CAPS> = {
+  single: {
+    ...MERGE_CAPS,
+    suitableFor: 5,
+    chapterPoints: 5,
+    terms: 5,
+  },
+  interview: {
+    ...MERGE_CAPS,
+    chapterPoints: 4,
+    chapterActions: 3,
+    tldr: 6,
+    suitableFor: 4,
+    terms: 4,
+  },
+  discussion: {
+    ...MERGE_CAPS,
+    chapterPoints: 4,
+    chapterActions: 3,
+    suitableFor: 4,
+    terms: 6,
+  },
+};
 const CJK_STOPWORDS = new Set([
   "我们",
   "你们",
@@ -473,6 +780,65 @@ const CJK_STOPWORDS = new Set([
   "现在",
   "这样",
 ]);
+const QUALITY_GATE_BLOCKING_PREFIXES: string[] = [
+  "chapter_count_out_of_range",
+  "template_section_count_unexpected",
+  "meta_identifier_invalid",
+  "meta_language_missing",
+  "meta_dc_language_mismatch",
+  "meta_generated_at_missing",
+  "meta_generated_date_mismatch",
+  "meta_source_type_missing",
+  "meta_source_ref_missing",
+  "meta_creator_missing",
+  "appendix_theme_count_low",
+  "appendix_theme_name_missing",
+  "appendix_theme_quotes_missing",
+  "no_chapters",
+  "chapter_title_too_short",
+  "chapter_range_missing",
+  "chapter_section_id_mismatch",
+  "chapter_section_id_duplicate",
+  "chapter_section_id_not_indexed",
+  "missing_chapter_index",
+];
+const QUALITY_GATE_WARNING_PREFIXES: string[] = [
+  "suitable_for_too_short",
+  "outcomes_too_short",
+  "tldr_too_short",
+  "tldr_too_long",
+  "terms_too_few",
+  "actions_total_too_few",
+  "chapter_points_sparse",
+  "chapter_quotes_sparse",
+  "chapter_actions_missing",
+  "one_line_conclusion_missing",
+];
+const QUALITY_GATE_WARNING_MAX = 4;
+
+function isQualityGateBlockingIssue(issue: string): boolean {
+  return QUALITY_GATE_BLOCKING_PREFIXES.some((prefix) => issue.startsWith(prefix));
+}
+
+function isQualityGateWarning(issue: string): boolean {
+  return QUALITY_GATE_WARNING_PREFIXES.some((prefix) => issue.startsWith(prefix));
+}
+
+function isQualityGatePassed(issues: string[]): {
+  passed: boolean;
+  blockingIssues: string[];
+  warningIssues: string[];
+  warningCount: number;
+} {
+  const blockingIssues = issues.filter(isQualityGateBlockingIssue);
+  const warningIssues = issues.filter(isQualityGateWarning);
+  return {
+    passed: blockingIssues.length === 0 && warningIssues.length <= QUALITY_GATE_WARNING_MAX,
+    blockingIssues,
+    warningIssues,
+    warningCount: warningIssues.length,
+  };
+}
 
 function languageToDc(language: string): string {
   const normalized = language.trim().toLowerCase();
@@ -788,52 +1154,43 @@ const EN_STOPWORDS = new Set([
   "for",
   "the",
   "and",
+  "hello",
+  "welcome",
+  "speaker",
+  "host",
+  "guest",
+  "yeah",
+  "right",
+  "okay",
+]);
+const DISCOURSE_FILLERS = new Set([
+  "对吧",
+  "没错",
+  "是的",
+  "然后",
+  "就是",
+  "其实",
+  "那个",
+  "这个",
+  "我们",
+  "你们",
+  "他们",
+  "大家",
+  "好的",
+  "嗯",
+  "啊",
+  "呃",
+  "诶",
+  "哈哈",
+  "哈哈哈",
+  "的话",
+  "这种",
+  "这样",
+  "那个时候",
+  "然后呢",
 ]);
 
-const TOPIC_TEMPLATES: TopicTemplate[] = [
-  {
-    title: "开场与话题设定",
-    intent: "set-context-and-goals",
-    keywords: ["今天", "话题", "亲子关系", "开始", "介绍", "update", "近况"],
-    actions: ["列出你本期最关注的 3 个问题，按优先级排序。", "用一句话写下你听完这期后最想解决的核心冲突。"],
-  },
-  {
-    title: "边界框架与识别",
-    intent: "define-concepts-and-boundaries",
-    keywords: ["边界", "情感", "物质", "时间", "物理", "界限", "独立"],
-    actions: ["把你的冲突按情感/物质/时间/物理四类各写 1 个例子。", "给每类冲突补 1 条替代行为，而不是只写抱怨。"],
-  },
-  {
-    title: "常见冲突与触发点",
-    intent: "diagnose-conflicts-and-triggers",
-    keywords: ["冲突", "定居", "催婚", "工作", "稳定", "焦虑", "价值观", "父母"],
-    actions: ["把冲突拆成“事实问题”和“情绪问题”两列，先处理事实。", "提前写好 1 句降温回应，避免在高情绪时硬碰硬。"],
-  },
-  {
-    title: "沟通策略与减摩擦",
-    intent: "communication-and-friction-reduction",
-    keywords: ["沟通", "陪伴", "管理", "情绪", "外包", "敷衍", "策略", "电话"],
-    actions: ["准备一句可复用的结束语，避免对话升级。", "选 1 件高摩擦家务，尝试第三方服务或流程替代。"],
-  },
-  {
-    title: "内疚、支持与关系修复",
-    intent: "repair-relationship-and-support",
-    keywords: ["内疚", "回报", "支持", "亲密", "理解", "关系", "成长", "爱"],
-    actions: ["写下“我需要的是___，不是___”并在下一次沟通中使用。", "每周安排一次低冲突触达，只分享近况不讨论争议议题。"],
-  },
-  {
-    title: "家庭模式观察",
-    intent: "observe-family-patterns",
-    keywords: ["朋友", "家庭", "模式", "聊天", "理想", "东亚", "差异", "话题"],
-    actions: ["建立一份非评判型话题清单（新闻/旅行/生活小事）。", "给家庭沟通设定最低可持续频率并坚持 4 周。"],
-  },
-  {
-    title: "下一代与长期行动",
-    intent: "long-term-practices",
-    keywords: ["父母", "孩子", "支持", "犯错", "安全感", "习惯", "长期", "行动"],
-    actions: ["写下 1 条你未来做父母“绝不做”的行为规则。", "把本期最认同的 1 条原则转成可量化习惯并追踪。"],
-  },
-];
+const GENERIC_DECLARED_KEYWORDS = new Set(["世界", "电影", "故事", "时代", "身份", "人类", "节目", "文化"]);
 
 function normalizeSpeaker(raw: string): string {
   const normalized = cleanLine(raw.replace(/[：:]+$/, ""));
@@ -917,26 +1274,127 @@ function extractTranscriptBody(input: string): string {
   return normalized;
 }
 
-function extractKeywords(input: string): string[] {
-  const hanDominant = (input.match(/[\u4e00-\u9fff]/g) ?? []).length >= 40;
-  const tokens = input.match(/[\p{Script=Han}]{2,}|[A-Za-z]{4,}/gu) ?? [];
-  const scored = new Map<string, number>();
-  for (const tokenRaw of tokens) {
-    const token = /[A-Za-z]/.test(tokenRaw) ? tokenRaw.toLowerCase() : tokenRaw;
-    if (token.length < 2 || CJK_STOPWORDS.has(token) || NOISE_KEYWORDS.has(token) || EN_STOPWORDS.has(token)) {
-      continue;
-    }
-    if (/^(是的|对+|嗯+|啊+|我说|好的|可以|然后|就是)$/.test(token)) {
-      continue;
-    }
-    if (hanDominant && /[A-Za-z]/.test(token)) {
-      continue;
-    }
-    scored.set(token, (scored.get(token) ?? 0) + 1);
+function extractDeclaredKeywords(input: string): string[] {
+  const match = input.match(/keywords\s*:\s*([\s\S]*?)\btranscript\s*:/i);
+  if (!match?.[1]) {
+    return [];
   }
-  return Array.from(scored.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([token]) => token);
+  return uniqueNonEmpty(
+    match[1]
+      .replace(/\s+/g, " ")
+      .split(/[、,，;；|/]/)
+      .map((part) => cleanLine(part))
+      .filter((part) => part.length >= 2)
+      .filter((part) => !isLowSignalKeywordToken(part)),
+  );
+}
+
+function isLowSignalKeywordToken(token: string): boolean {
+  if (!token || token.length < 2) {
+    return true;
+  }
+  const normalized = /[A-Za-z]/.test(token) ? token.toLowerCase() : token;
+  if (
+    CJK_STOPWORDS.has(normalized) ||
+    NOISE_KEYWORDS.has(normalized) ||
+    EN_STOPWORDS.has(normalized) ||
+    DISCOURSE_FILLERS.has(normalized)
+  ) {
+    return true;
+  }
+  if (/^(对+|嗯+|啊+|呃+|诶+|哈+|ok+|okay+|yeah+)$/.test(normalized)) {
+    return true;
+  }
+  if (/^\d+$/.test(normalized)) {
+    return true;
+  }
+  if (/^speaker\d*$/i.test(normalized)) {
+    return true;
+  }
+  if (/^([\u4e00-\u9fffA-Za-z])\1{2,}$/.test(normalized)) {
+    return true;
+  }
+  if (
+    /^(但是|时候|的时候|然后|就是|对吧|没错|是的|好了|谢谢你|拜拜|我们|你们|他们|大家|是一个|的一个|我觉得|你觉得|事情|东西)$/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function extractKeywords(input: string): string[] {
+  const hanDominant = (input.match(/[\u4e00-\u9fff]/g) ?? []).length >= 30;
+  const chunks = input.match(/[\p{Script=Han}]+|[A-Za-z]{4,}/gu) ?? [];
+  const scored = new Map<string, number>();
+
+  const grammarChars = new Set(["的", "了", "是", "在", "就", "都", "和", "与", "及", "而", "但", "并", "被"]);
+  const isHanTokenCandidate = (token: string): boolean => {
+    if (token.length < 2 || token.length > 6) {
+      return false;
+    }
+    if (isLowSignalKeywordToken(token)) {
+      return false;
+    }
+    const chars = Array.from(token);
+    const grammarCount = chars.filter((char) => grammarChars.has(char)).length;
+    if (grammarCount >= Math.ceil(chars.length / 2)) {
+      return false;
+    }
+    if (/^(这个|那个|一种|一些|一个|什么|怎么|因为|所以|然后|不是|没有|我觉得|你觉得|是一个|的一个)$/.test(token)) {
+      return false;
+    }
+    if (/^(对吧|没错|是的|哈哈|好的|拜拜|谢谢|时候)$/.test(token)) {
+      return false;
+    }
+    if (/^(我|你|他|她|它|我们|你们|他们)/.test(token) && token.length <= 4) {
+      return false;
+    }
+    if (grammarChars.has(token[0] ?? "") || grammarChars.has(token[token.length - 1] ?? "")) {
+      return false;
+    }
+    return true;
+  };
+
+  for (const chunkRaw of chunks) {
+    if (!chunkRaw.trim()) {
+      continue;
+    }
+    if (/[A-Za-z]/.test(chunkRaw)) {
+      const token = chunkRaw.toLowerCase();
+      if (hanDominant || isLowSignalKeywordToken(token)) {
+        continue;
+      }
+      scored.set(token, (scored.get(token) ?? 0) + 1);
+      continue;
+    }
+
+    const chunk = chunkRaw.trim();
+    if (chunk.length < 2) {
+      continue;
+    }
+    for (let size = 2; size <= 4; size += 1) {
+      if (chunk.length < size) {
+        continue;
+      }
+      for (let index = 0; index <= chunk.length - size; index += 1) {
+        const token = chunk.slice(index, index + size);
+        if (!isHanTokenCandidate(token)) {
+          continue;
+        }
+        const weight = size === 4 ? 2.2 : size === 3 ? 1.6 : 1;
+        scored.set(token, (scored.get(token) ?? 0) + weight);
+      }
+    }
+  }
+
+  const ranked = Array.from(scored.entries())
+    .filter(([token, count]) => !isLowSignalKeywordToken(token) && count >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const highConfidence = ranked.filter(([, count]) => count >= 4);
+  const selected = (highConfidence.length >= 3 ? highConfidence : ranked).map(([token]) => token);
+  return uniqueNonEmpty(selected);
 }
 
 function parseTranscriptEntries(transcriptText: string): TranscriptEntry[] {
@@ -1125,57 +1583,74 @@ function keywordHitCount(text: string, keywords: string[]): number {
   return keywords.reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
 }
 
-function pickTopicTemplate(chunkText: string, usedTitles: Set<string>): TopicTemplate | null {
-  const scored = TOPIC_TEMPLATES.map((topic) => ({
-    topic,
-    score: keywordHitCount(chunkText, topic.keywords),
-  }))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score);
-  for (const item of scored) {
-    if (!usedTitles.has(item.topic.title)) {
-      return item.topic;
-    }
+function keywordFrequency(text: string, keyword: string): number {
+  if (!text || !keyword) {
+    return 0;
   }
-  return scored[0]?.topic ?? null;
+  let count = 0;
+  let cursor = 0;
+  while (cursor >= 0) {
+    const index = text.indexOf(keyword, cursor);
+    if (index === -1) {
+      break;
+    }
+    count += 1;
+    cursor = index + keyword.length;
+  }
+  return count;
 }
 
 function chapterTitleFromChunk(
   index: number,
   chunk: TranscriptEntry[],
-  usedTopicTitles: Set<string>,
-): { title: string; topic: TopicTemplate | null } {
+  preferredKeywords: string[],
+): { title: string; topicKeywords: string[] } {
   const chunkText = chunk.map((entry) => entry.text).join(" ");
-  const matchedTopic = pickTopicTemplate(chunkText, usedTopicTitles);
-  if (matchedTopic) {
-    usedTopicTitles.add(matchedTopic.title);
-    return { title: matchedTopic.title, topic: matchedTopic };
+  const preferredHits = preferredKeywords
+    .map((keyword) => ({ keyword, score: keywordFrequency(chunkText, keyword) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || b.keyword.length - a.keyword.length)
+    .map((item) => item.keyword)
+    .slice(0, 3);
+  if (preferredHits.length >= 2) {
+    return { title: preferredHits.slice(0, 2).join(" / "), topicKeywords: preferredHits };
+  }
+  if (preferredHits.length === 1) {
+    return { title: `${preferredHits[0]}：核心讨论`, topicKeywords: preferredHits };
   }
 
-  const keywords = extractKeywords(chunkText).slice(0, 2);
+  const keywords = topicFocusKeywords(extractKeywords(chunkText), 3);
   if (!keywords.length) {
-    return { title: `核心主题 ${index}`, topic: null };
+    const fallback = sanitizeSentence(chunk[0]?.text ?? "");
+    const fallbackTitle = fallback ? shorten(fallback, 18) : `核心讨论 ${index}`;
+    return { title: fallbackTitle, topicKeywords: [] };
   }
-  return { title: keywords.join(" / "), topic: null };
+  if (keywords.length === 1) {
+    return { title: `${keywords[0]}：核心讨论`, topicKeywords: keywords };
+  }
+  return { title: keywords.slice(0, 2).join(" / "), topicKeywords: keywords };
 }
 
-function buildChapterPlan(entries: TranscriptEntry[], segments: SemanticSegment[]): ChapterPlanItem[] {
-  const usedTopicTitles = new Set<string>();
+function buildChapterPlan(
+  entries: TranscriptEntry[],
+  segments: SemanticSegment[],
+  preferredKeywords: string[],
+): ChapterPlanItem[] {
   return segments.map((segment, index) => {
     const chapterIndex = index + 1;
     const chunk = entries.slice(segment.startIndex, segment.endIndex + 1);
-    const titleMatch = chapterTitleFromChunk(chapterIndex, chunk, usedTopicTitles);
+    const titleMatch = chapterTitleFromChunk(chapterIndex, chunk, preferredKeywords);
+    const intent = segment.signals.includes("question_turn") ? "question-driven-analysis" : "summarize-and-apply";
     return {
       chapterIndex,
       title: titleMatch.title,
       range: toRange(chunk),
       segmentIds: [`seg_${String(chapterIndex).padStart(2, "0")}`],
-      intent: titleMatch.topic?.intent ?? "summarize-and-apply",
+      intent,
       startIndex: segment.startIndex,
       endIndex: segment.endIndex,
       signals: segment.signals,
-      topic: titleMatch.topic,
-      topicKeywords: titleMatch.topic?.keywords ?? [],
+      topicKeywords: titleMatch.topicKeywords,
     };
   });
 }
@@ -1257,13 +1732,12 @@ function chapterQuotesFromChunk(points: string[], chunk: TranscriptEntry[]): Boo
   }));
 }
 
-function chapterActionsFromPoints(points: string[], topic: TopicTemplate | null): string[] {
-  if (topic) {
-    return fillToCount(topic.actions.slice(0, 2), 2, (index) => `行动 ${index + 1}：从本章整理 1 条可量化实践。`);
-  }
+function chapterActionsFromPoints(points: string[]): string[] {
+  const first = shorten(points[0] ?? "选出本章最关键观点", 28);
+  const second = shorten(points[1] ?? "补齐这一观点的证据链", 28);
   return [
-    "把本章要点写成“继续做 / 停止做 / 尝试做”三列，并各填 1 条。",
-    `在 48 小时内验证 1 条观点：${shorten(points[0] ?? "选择本章最关键观点", 24)}。`,
+    `把“${first}”改写成 3 步执行清单，并设定截止时间。`,
+    `从本章引用中挑 1 条证据，验证“${second}”是否成立。`,
   ];
 }
 
@@ -1276,6 +1750,79 @@ function chapterExplanationFromPoints(title: string, points: string[]): BookletC
     judgmentFramework: "判断标准/框架：优先选择可被原文时间戳支持、且能转化为具体行为的观点。",
     commonMisunderstanding: "常见误解：只讨论立场对错而忽略执行路径，导致冲突重复发生。",
   };
+}
+
+function topicFocusKeywords(keywords: string[], count: number): string[] {
+  return uniqueNonEmpty(keywords.filter((keyword) => !isLowSignalKeywordToken(keyword))).slice(0, count);
+}
+
+function buildSuitableFor(topics: string[]): string[] {
+  const topicPhrase = topics.length ? topics.join("、") : "本期核心议题";
+  return [
+    `关注${topicPhrase}、想理解背后社会语境的听众。`,
+    "想把播客观点沉淀成可复盘笔记，而不是只停留在“听过了”的人。",
+    "希望把灵感转成可执行行动，并持续验证效果的人。",
+  ];
+}
+
+function findTermEvidenceSnippet(term: string, chapters: BookletChapter[]): string {
+  for (const chapter of chapters) {
+    const pointHit = chapter.points.find((point) => point.includes(term));
+    if (pointHit) {
+      return shorten(pointHit, 52);
+    }
+    const quoteHit = chapter.quotes.find((quote) => quote.text.includes(term));
+    if (quoteHit) {
+      return shorten(quoteHit.text, 52);
+    }
+  }
+  return "";
+}
+
+function buildTermsFromKeywords(keywords: string[], chapters: BookletChapter[]): BookletTerm[] {
+  const topicTerms = topicFocusKeywords(keywords, 6);
+  if (!topicTerms.length) {
+    return fillToCount(
+      [],
+      3,
+      (index) =>
+        ({
+          term: `术语 ${index + 1}`,
+          definition: "本期反复出现的重要概念，用于支撑核心观点。",
+        }) satisfies BookletTerm,
+    );
+  }
+  return fillToCount(
+    topicTerms.map((term) => {
+      const snippet = findTermEvidenceSnippet(term, chapters);
+      return {
+        term,
+        definition: snippet
+          ? `节目语境：${snippet}`
+          : `节目中围绕“${term}”展开讨论，强调其与主题判断和行动选择的关系。`,
+      };
+    }),
+    3,
+    (index) => {
+      const fallbackTerm = topicTerms[index % topicTerms.length] ?? `术语 ${index + 1}`;
+      return {
+        term: fallbackTerm,
+        definition: `节目中围绕“${fallbackTerm}”展开讨论，强调其与主题判断和行动选择的关系。`,
+      };
+    },
+  );
+}
+
+function buildChapterPatchTranscriptExcerpt(chunk: TranscriptEntry[], maxChars = 5400): string {
+  const rows = chunk.map((entry) => `${entry.speaker} ${entry.timestamp}\n${entry.text}`);
+  let joined = "";
+  for (const row of rows) {
+    if (joined.length + row.length + 2 > maxChars) {
+      break;
+    }
+    joined += joined ? `\n\n${row}` : row;
+  }
+  return joined || rows.slice(0, 3).join("\n\n");
 }
 
 function cleanBookletField(input: string, maxLength: number): string {
@@ -1354,11 +1901,50 @@ function chooseQuoteListWithFallback(
   ];
 }
 
+function mergeBookletWithChapterPatches(
+  base: BookletModel,
+  chapterPatches: Map<number, LlmChapterPatch>,
+  mergeCaps: typeof MERGE_CAPS,
+): BookletModel {
+  if (!chapterPatches.size) {
+    return base;
+  }
+  return {
+    ...base,
+    chapters: base.chapters.map((chapter) => {
+      const patch = chapterPatches.get(chapter.index);
+      if (!patch) {
+        return chapter;
+      }
+      return {
+        ...chapter,
+        points: chooseListWithFallback(patch.points, chapter.points, mergeCaps.chapterPoints, 120),
+        explanation: {
+          background: cleanBookletField(patch.explanation.background || chapter.explanation.background, 220) ||
+            chapter.explanation.background,
+          coreConcept: cleanBookletField(patch.explanation.coreConcept || chapter.explanation.coreConcept, 220) ||
+            chapter.explanation.coreConcept,
+          judgmentFramework:
+            cleanBookletField(patch.explanation.judgmentFramework || chapter.explanation.judgmentFramework, 220) ||
+            chapter.explanation.judgmentFramework,
+          commonMisunderstanding:
+            cleanBookletField(
+              patch.explanation.commonMisunderstanding || chapter.explanation.commonMisunderstanding,
+              220,
+            ) || chapter.explanation.commonMisunderstanding,
+        },
+        actions: chooseListWithFallback(patch.actions, chapter.actions, mergeCaps.chapterActions, 120),
+      };
+    }),
+  };
+}
+
 function mergeBookletWithLlmDraft(
   base: BookletModel,
   draft: Awaited<ReturnType<typeof generateBookletDraftWithLlm>>,
   evidence: QuoteEvidenceIndex,
   chapterEvidenceMap: ChapterEvidenceMap,
+  mergeCaps: typeof MERGE_CAPS,
 ): BookletModel {
   if (!draft) {
     return base;
@@ -1374,8 +1960,8 @@ function mergeBookletWithLlmDraft(
     return {
       ...chapter,
       title: cleanBookletField(draftChapter.title || chapter.title, 48) || chapter.title,
-      points: chooseListWithFallback(draftChapter.points, chapter.points, MERGE_CAPS.chapterPoints, 120),
-      quotes: chooseQuoteListWithFallback(draftChapter.quotes, chapter.quotes, MERGE_CAPS.chapterQuotes, chapterEvidence),
+      points: chooseListWithFallback(draftChapter.points, chapter.points, mergeCaps.chapterPoints, 120),
+      quotes: chooseQuoteListWithFallback(draftChapter.quotes, chapter.quotes, mergeCaps.chapterQuotes, chapterEvidence),
       explanation: {
         background:
           cleanBookletField(draftChapter.explanation.background || chapter.explanation.background, 220) ||
@@ -1394,37 +1980,43 @@ function mergeBookletWithLlmDraft(
             220,
           ) || chapter.explanation.commonMisunderstanding,
       },
-      actions: chooseListWithFallback(draftChapter.actions, chapter.actions, MERGE_CAPS.chapterActions, 120),
+      actions: chooseListWithFallback(draftChapter.actions, chapter.actions, mergeCaps.chapterActions, 120),
     };
   });
 
   const actionFallback = chapters.flatMap((chapter) => chapter.actions);
   const mergedAppendixThemes = draft.appendixThemes
-    .slice(0, MERGE_CAPS.appendixThemes)
+    .slice(0, mergeCaps.appendixThemes)
     .map((theme, index) => ({
       name: cleanBookletField(theme.name, 40) || `主题 ${index + 1}`,
       quotes: chooseQuoteListWithFallback(
         theme.quotes,
         base.appendixThemes[index]?.quotes ?? base.appendixThemes[0]?.quotes ?? [],
-        MERGE_CAPS.appendixThemeQuotes,
+        mergeCaps.appendixThemeQuotes,
         evidence,
       ),
     }));
 
   return {
     ...base,
-    suitableFor: chooseListWithFallback(draft.suitableFor, base.suitableFor, MERGE_CAPS.suitableFor, 120),
-    outcomes: chooseListWithFallback(draft.outcomes, base.outcomes, MERGE_CAPS.outcomes, 120),
+    suitableFor: chooseListWithFallback(draft.suitableFor, base.suitableFor, mergeCaps.suitableFor, 120),
+    outcomes: chooseListWithFallback(draft.outcomes, base.outcomes, mergeCaps.outcomes, 120),
     oneLineConclusion:
       cleanBookletField(draft.oneLineConclusion || base.oneLineConclusion, 180) || base.oneLineConclusion,
-    tldr: chooseListWithFallback(draft.tldr, base.tldr, MERGE_CAPS.tldr, 180, (index) => base.tldr[index] ?? `要点 ${index + 1}`),
+    tldr: chooseListWithFallback(
+      draft.tldr,
+      base.tldr,
+      mergeCaps.tldr,
+      180,
+      (index) => base.tldr[index] ?? `要点 ${index + 1}`,
+    ),
     chapters,
-    actionNow: chooseListWithFallback(draft.actionNow, actionFallback.slice(0, 3), MERGE_CAPS.actionNow, 120),
-    actionWeek: chooseListWithFallback(draft.actionWeek, actionFallback.slice(3, 6), MERGE_CAPS.actionWeek, 120),
-    actionLong: chooseListWithFallback(draft.actionLong, actionFallback.slice(6, 8), MERGE_CAPS.actionLong, 120),
+    actionNow: chooseListWithFallback(draft.actionNow, actionFallback.slice(0, 3), mergeCaps.actionNow, 120),
+    actionWeek: chooseListWithFallback(draft.actionWeek, actionFallback.slice(3, 6), mergeCaps.actionWeek, 120),
+    actionLong: chooseListWithFallback(draft.actionLong, actionFallback.slice(6, 8), mergeCaps.actionLong, 120),
     terms:
-      draft.terms.length >= MERGE_CAPS.draftTermsMin
-        ? draft.terms.slice(0, MERGE_CAPS.terms).map((term) => ({
+      draft.terms.length >= mergeCaps.draftTermsMin
+        ? draft.terms.slice(0, mergeCaps.terms).map((term) => ({
             term: cleanBookletField(term.term, 30),
             definition: cleanBookletField(term.definition, 120),
           }))
@@ -1441,12 +2033,23 @@ async function buildBookletModel(params: {
   sourceType: SourceType;
   sourceRef: string;
   transcriptText: string;
+  generationMethod?: GenerationMethod;
+  sourceProfile?: TranscriptProfile;
   inspector?: (stage: InspectorPushInput) => void;
 }): Promise<BookletModel> {
   const entries = parseTranscriptEntries(params.transcriptText);
   const transcriptBody = extractTranscriptBody(params.transcriptText);
+  const declaredKeywords = extractDeclaredKeywords(params.transcriptText);
+  const rankedDeclaredKeywords = declaredKeywords
+    .map((keyword) => ({ keyword, score: keywordFrequency(transcriptBody, keyword) }))
+    .sort((a, b) => b.score - a.score || a.keyword.localeCompare(b.keyword))
+    .map((item) => item.keyword);
+  const prioritizedDeclaredKeywords = rankedDeclaredKeywords.filter((keyword) => !GENERIC_DECLARED_KEYWORDS.has(keyword));
+  const chapterTitleKeywords = prioritizedDeclaredKeywords.length ? prioritizedDeclaredKeywords : rankedDeclaredKeywords;
+  const sourceProfile = params.sourceProfile ?? classifyTranscriptSourceProfile(entries, params.transcriptText);
+  const mergeCaps = PROFILE_MERGE_CAPS[sourceProfile.sourceProfile];
   const plannedSegments = planSemanticSegments(entries);
-  const chapterPlan = buildChapterPlan(entries, plannedSegments);
+  const chapterPlan = buildChapterPlan(entries, plannedSegments, chapterTitleKeywords);
   const chapters = chapterPlan.map((plan) => {
     const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
     const points = chapterPointsFromChunk(plan.title, chunk, plan.topicKeywords);
@@ -1460,11 +2063,16 @@ async function buildBookletModel(params: {
       points,
       quotes,
       explanation,
-      actions: chapterActionsFromPoints(points, plan.topic),
+      actions: chapterActionsFromPoints(points),
     };
   });
 
-  const topKeywords = extractKeywords(transcriptBody).slice(0, 6);
+  const keywordSource = entries.map((entry) => entry.text).join("\n") || transcriptBody;
+  const topKeywords = topicFocusKeywords(
+    [...chapterTitleKeywords, ...rankedDeclaredKeywords, ...extractKeywords(keywordSource)],
+    6,
+  );
+  const focusKeywords = topicFocusKeywords(topKeywords, 3);
   const tldr = fillToCount(
     uniqueNonEmpty(
       chapters.map((chapter) => {
@@ -1475,21 +2083,10 @@ async function buildBookletModel(params: {
     7,
     (index) => `要点 ${index + 1}：将本期信息整理为可执行的知识清单。`,
   );
-  const terms = fillToCount(
-    topKeywords.map((term) => ({
-      term,
-      definition: `在本期语境中，指与“${term}”相关的核心讨论与实践线索。`,
-    })),
-    3,
-    (index) => ({
-      term: `术语 ${index + 1}`,
-      definition: "本期反复出现的重要概念，用于支撑核心观点。",
-    }),
-  );
+  const terms = buildTermsFromKeywords(topKeywords, chapters);
 
   const generatedAtIso = new Date().toISOString();
   const generatedDate = generatedAtIso.slice(0, 10);
-  const introKeyword = topKeywords.find((keyword) => /[\u4e00-\u9fff]/.test(keyword)) ?? "亲子关系";
   const quotePool = chapters.flatMap((chapter) => chapter.quotes).slice(0, 4);
   const appendixQuotes = fillToCount(quotePool, 4, (index) => ({
     speaker: FALLBACK_SPEAKER,
@@ -1510,20 +2107,15 @@ async function buildBookletModel(params: {
       sourceType: params.sourceType,
       templateId: params.templateId,
     },
-    suitableFor: [
-      "想把播客内容沉淀成长期笔记的听众。",
-      `对“${introKeyword}”主题想建立系统理解的学习者。`,
-      "需要把听后灵感转化为行动清单的人。",
-    ],
+    suitableFor: buildSuitableFor(focusKeywords),
     outcomes: [
       "拿到一份可检索、可复盘的章节化内容。",
       "快速定位关键观点与对应时间戳引用。",
       "直接使用行动清单推进下一步实践。",
     ],
-    oneLineConclusion: `本期围绕${chapters
-      .slice(1, 4)
-      .map((chapter) => chapter.title)
-      .join("、")}展开，核心是把冲突讨论转成可执行的边界与沟通动作。`,
+    oneLineConclusion: `本期围绕${(focusKeywords.length ? focusKeywords : chapters.slice(0, 3).map((chapter) => chapter.title))
+      .slice(0, 3)
+      .join("、")}展开，核心是把讨论转成可追踪的判断与行动。`,
     tldr,
     chapters,
     actionNow: chapters.flatMap((chapter) => chapter.actions).slice(0, 2),
@@ -1536,76 +2128,218 @@ async function buildBookletModel(params: {
     ],
   };
 
-  const llmDraft = await generateBookletDraftWithLlm({
-    title: params.title,
-    language: params.language,
-    sourceType: params.sourceType,
-    sourceRef: params.sourceRef,
-    chapterRanges: baseModel.chapters.map((chapter) => `${chapter.title}（${chapter.range}）`),
-    chapterPlans: chapterPlan.map((plan) => {
-      const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
-      const chapter = chapters[plan.chapterIndex - 1];
-      return {
-        chapterIndex: plan.chapterIndex,
-        title: plan.title,
-        range: plan.range,
-        segmentIds: plan.segmentIds,
-        intent: plan.intent,
-        signals: plan.signals,
-        contextExcerpt: buildChapterContextExcerpt(chunk),
-        evidenceAnchors: (chapter?.quotes ?? []).slice(0, 3),
-      } satisfies LlmChapterPlanHint;
-    }),
-    transcriptText: transcriptBody,
-    inspector: {
-      onRequest: (request) => {
-        pushInspectorStage(params.inspector, {
-          stage: "llm_request",
-          input: {
-            prompt_preview: request.promptPreview,
-          },
-          config: {
-            model: request.model,
-            temperature: request.temperature,
-            timeout_ms: request.timeoutMs,
-            input_max_chars: request.inputMaxChars,
-            endpoint: request.endpoint,
-          },
-        });
+  const method = params.generationMethod ?? "B";
+  if (method === "A") {
+    const methodAQualityIssues = countModelQualityIssues(baseModel);
+    const methodAQualityGate = isQualityGatePassed(methodAQualityIssues);
+    pushInspectorStage(params.inspector, {
+      stage: "normalization",
+      notes: `Transcript source profile: ${sourceProfile.sourceProfile} (confidence ${sourceProfile.confidence})`,
+      input: sourceProfile.signals,
+      output: {
+        selected_profile: sourceProfile.sourceProfile,
+        selected_profile_confidence: sourceProfile.confidence,
+        chapter_count: baseModel.chapters.length,
+        tldr_count: baseModel.tldr.length,
+        terms_count: baseModel.terms.length,
       },
-      onResponse: (response) => {
-        pushInspectorStage(params.inspector, {
-          stage: "llm_response",
-          input: {
-            http_status: response.httpStatus,
-            raw_response_preview: response.rawContentPreview,
-          },
-          output: {
-            parsed_chapters: response.parsedChapterCount,
-            parsed_terms: response.parsedTermCount,
-            parsed_tldr: response.parsedTldrCount,
-            parse_ok: response.parseOk,
-          },
-        });
+      config: {
+        source_profile: sourceProfile.sourceProfile,
       },
-      onError: (message) => {
-        pushInspectorStage(params.inspector, {
-          stage: "llm_response",
-          notes: `LLM fallback path used: ${message}`,
-          output: { parse_ok: false },
-        });
+    });
+    pushInspectorStage(params.inspector, {
+      stage: "normalization",
+      notes: methodAQualityIssues.length
+        ? "Method A: parser/rule-first deterministic booklet (LLM disabled), quality probe has warnings."
+        : "Method A: parser/rule-first deterministic booklet (LLM disabled), quality probe passed.",
+      input: {
+        generation_method: method,
+        parsed_entries: entries.length,
+        planned_chapters: chapterPlan.length,
+        quality_issue_count: methodAQualityIssues.length,
+        quality_warning_count: methodAQualityGate.warningCount,
+        quality_passed: methodAQualityGate.passed,
+        source_profile: sourceProfile.sourceProfile,
+        source_profile_confidence: sourceProfile.confidence,
       },
+      output: {
+        final_chapters: baseModel.chapters.length,
+        tldr_count: baseModel.tldr.length,
+        terms_count: baseModel.terms.length,
+        quality_issues: methodAQualityIssues,
+        quality_passed: methodAQualityGate.passed,
+        quality_blocking_issues: methodAQualityGate.blockingIssues,
+        quality_warning_issues: methodAQualityGate.warningIssues,
+      },
+      config: {
+        source_type: params.sourceType,
+        source_profile: sourceProfile.sourceProfile,
+        source_profile_confidence: sourceProfile.confidence,
+        profile_name: PROFILE_RESOLVED_NAME[sourceProfile.sourceProfile],
+        quality_gate: {
+          enabled: true,
+          warning_max: QUALITY_GATE_WARNING_MAX,
+          status: methodAQualityGate.passed ? "passed" : "failed",
+        },
+      },
+    });
+    return baseModel;
+  }
+
+  const baselineQualityIssues = countModelQualityIssues(baseModel);
+  const baselineQualityGate = isQualityGatePassed(baselineQualityIssues);
+  pushInspectorStage(params.inspector, {
+    stage: "normalization",
+    notes: baselineQualityIssues.length ? "Quality probe (base model) has warnings." : "Quality probe (base model) passed.",
+    input: {
+      source_profile: sourceProfile.sourceProfile,
+      source_profile_confidence: sourceProfile.confidence,
+      chapter_count: baseModel.chapters.length,
+      quality_issue_count: baselineQualityIssues.length,
+      quality_warning_count: baselineQualityGate.warningCount,
+      quality_passed: baselineQualityGate.passed,
+    },
+    output: {
+      quality_issues: baselineQualityIssues,
+      quality_passed: baselineQualityGate.passed,
+      quality_blocking_issues: baselineQualityGate.blockingIssues,
+      quality_warning_issues: baselineQualityGate.warningIssues,
     },
   });
+
+  const forceChapterPath = transcriptBody.length > FULL_BOOK_LLM_MAX_CHARS;
+  let llmDraft: Awaited<ReturnType<typeof generateBookletDraftWithLlm>> = null;
+  if (forceChapterPath) {
+    pushInspectorStage(params.inspector, {
+      stage: "llm_response",
+      notes: "Full-book LLM skipped for long transcript; chapter-level LLM path selected.",
+      input: {
+        transcript_chars: transcriptBody.length,
+        full_book_max_chars: FULL_BOOK_LLM_MAX_CHARS,
+      },
+      output: {
+        parse_ok: null,
+        full_book_skipped: true,
+      },
+    });
+  } else {
+    llmDraft = await generateBookletDraftWithLlm({
+      title: params.title,
+      language: params.language,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      chapterRanges: baseModel.chapters.map((chapter) => `${chapter.title}（${chapter.range}）`),
+      chapterPlans: chapterPlan.map((plan) => {
+        const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
+        const chapter = chapters[plan.chapterIndex - 1];
+        return {
+          chapterIndex: plan.chapterIndex,
+          title: plan.title,
+          range: plan.range,
+          segmentIds: plan.segmentIds,
+          intent: plan.intent,
+          signals: plan.signals,
+          contextExcerpt: buildChapterContextExcerpt(chunk),
+          evidenceAnchors: (chapter?.quotes ?? []).slice(0, 3),
+        } satisfies LlmChapterPlanHint;
+      }),
+      transcriptText: transcriptBody,
+      promptProfile: method === "C" ? "strict_template_a" : "baseline",
+      inspector: {
+        onRequest: (request) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_request",
+            input: {
+              prompt_preview: request.promptPreview,
+            },
+            config: {
+              model: request.model,
+              temperature: request.temperature,
+              timeout_ms: request.timeoutMs,
+              input_max_chars: request.inputMaxChars,
+              endpoint: request.endpoint,
+            },
+          });
+        },
+        onResponse: (response) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_response",
+            input: {
+              http_status: response.httpStatus,
+              raw_response_preview: response.rawContentPreview,
+            },
+            output: {
+              parsed_chapters: response.parsedChapterCount,
+              parsed_terms: response.parsedTermCount,
+              parsed_tldr: response.parsedTldrCount,
+              parse_ok: response.parseOk,
+            },
+          });
+        },
+        onError: (message) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_response",
+            notes: `LLM fallback path used: ${message}`,
+            output: { parse_ok: false },
+          });
+        },
+      },
+    });
+  }
   const evidence = buildQuoteEvidenceIndex(entries);
   const chapterEvidenceMap = buildChapterEvidenceMap(entries, chapterPlan);
-  const finalModel = mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap);
+  const chapterPatches = new Map<number, LlmChapterPatch>();
+  if (!llmDraft) {
+    for (const plan of chapterPlan) {
+      const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
+      const patch = await generateChapterPatchWithLlm({
+        title: plan.title,
+        range: plan.range,
+        language: params.language,
+        sourceType: params.sourceType,
+        sourceRef: params.sourceRef,
+        transcriptExcerpt: buildChapterPatchTranscriptExcerpt(chunk),
+        promptProfile: method === "C" ? "strict_template_a" : "baseline",
+      });
+      if (patch) {
+        chapterPatches.set(plan.chapterIndex, patch);
+      }
+    }
+    pushInspectorStage(params.inspector, {
+      stage: "llm_response",
+      notes: forceChapterPath
+        ? chapterPatches.size
+          ? "Chapter-level LLM primary path applied for long transcript."
+          : "Chapter-level LLM primary path produced no usable patch."
+        : chapterPatches.size
+          ? "Full-book LLM draft unavailable; chapter-level patch retry applied once."
+          : "Full-book LLM draft unavailable; chapter-level patch retry returned no usable patch.",
+      input: {
+        retry_strategy: forceChapterPath ? "chapter_patch_primary" : "chapter_patch_once",
+        requested_chapters: chapterPlan.length,
+      },
+      output: {
+        patched_chapters: chapterPatches.size,
+        patched_indices: Array.from(chapterPatches.keys()),
+      },
+    });
+  }
+
+  let finalModel = mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap, mergeCaps);
+  if (!llmDraft && chapterPatches.size) {
+    finalModel = mergeBookletWithChapterPatches(finalModel, chapterPatches, mergeCaps);
+  }
+  const finalQualityIssues = countModelQualityIssues(finalModel);
+  const finalQualityGate = isQualityGatePassed(finalQualityIssues);
   pushInspectorStage(params.inspector, {
     stage: "normalization",
     input: {
+      generation_method: method,
       parsed_entries: entries.length,
       planned_chapters: chapterPlan.length,
       llm_draft_available: Boolean(llmDraft),
+      chapter_patch_retry_applied: !llmDraft,
+      chapter_patch_count: chapterPatches.size,
       base_title: baseModel.meta.title,
     },
     output: {
@@ -1613,11 +2347,27 @@ async function buildBookletModel(params: {
       chapter_titles: finalModel.chapters.map((chapter) => chapter.title),
       tldr_count: finalModel.tldr.length,
       terms_count: finalModel.terms.length,
+      quality_issue_count: finalQualityIssues.length,
+      quality_warning_count: finalQualityGate.warningCount,
+      quality_blocking_count: finalQualityGate.blockingIssues.length,
+      quality_passed: finalQualityGate.passed,
+      quality_issues: finalQualityIssues,
+      quality_blocking_issues: finalQualityGate.blockingIssues,
+      quality_warning_issues: finalQualityGate.warningIssues,
     },
     config: {
-      merge_caps: MERGE_CAPS,
+      merge_caps: mergeCaps,
       source_type: params.sourceType,
+      prompt_profile: method === "C" ? "strict_template_a" : "baseline",
+      profile_used: sourceProfile.sourceProfile,
+      profile_confidence: sourceProfile.confidence,
+      quality_gate: {
+        enabled: true,
+        warning_max: QUALITY_GATE_WARNING_MAX,
+        status: finalQualityGate.passed ? "passed" : "failed",
+      },
     },
+    notes: finalQualityGate.passed ? "Quality gate passed." : "Quality gate failed.",
   });
   return finalModel;
 }
@@ -2135,6 +2885,7 @@ export async function createArtifacts(params: {
   templateId: string;
   sourceType: SourceType;
   sourceRef?: string;
+  generationMethod?: GenerationMethod;
   inspector?: (stage: InspectorPushInput) => void;
 }) {
   const booklet = await buildBookletModel({
@@ -2145,6 +2896,7 @@ export async function createArtifacts(params: {
     templateId: params.templateId,
     sourceType: params.sourceType,
     sourceRef: params.sourceRef?.trim() || "N/A",
+    generationMethod: params.generationMethod,
     inspector: params.inspector,
   });
 

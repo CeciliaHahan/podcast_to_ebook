@@ -14,7 +14,6 @@ const elements = {
   form: document.getElementById("transcript-form"),
   title: document.getElementById("title"),
   language: document.getElementById("language"),
-  templateId: document.getElementById("template-id"),
   episodeUrl: document.getElementById("episode-url"),
   transcriptText: document.getElementById("transcript-text"),
   checkPersonal: document.getElementById("check-personal"),
@@ -369,7 +368,6 @@ async function handleCreateJob(event) {
       title: resolvedTitle,
       language: elements.language.value.trim(),
       transcript_text: elements.transcriptText.value,
-      template_id: elements.templateId.value.trim() || "templateA-v0-book",
       output_formats: ["epub"],
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
@@ -396,7 +394,6 @@ async function handleCreateJob(event) {
 function loadSample() {
   elements.title.value = "Sample Dense Podcast Episode";
   elements.language.value = "zh-CN";
-  elements.templateId.value = "templateA-v0-book";
   elements.episodeUrl.value = "https://example.com/episodes/sample";
   elements.transcriptText.value =
     "主持人：今天我们讨论如何把播客内容沉淀成可复用知识资产。\n嘉宾：先明确问题边界，再拆分结构，最后形成行动清单。\n主持人：如果听众只记住一件事，那就是把输入转成可执行输出。";

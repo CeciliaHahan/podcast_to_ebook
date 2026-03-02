@@ -2,13 +2,15 @@ import { config } from "../config.js";
 import type { SourceType } from "../types/domain.js";
 
 const SYSTEM_PROMPT = [
-  "You are an editorial assistant that converts a podcast transcript into a high-quality Chinese knowledge booklet draft.",
-  "Your priorities, in order: (1) faithfulness to transcript, (2) clarity and structure, (3) actionable takeaways.",
-  "Return valid JSON only. No markdown, no commentary, no extra keys.",
-  "Never invent facts, quotes, timestamps, or speakers.",
-  'If transcript evidence is insufficient, use the literal phrase: "未在原文中明确说明".',
-  "Quotes must remain faithful to transcript wording; do not paraphrase inside quote text.",
-  "Use clear modern Chinese, avoid influencer tone, and avoid unnecessary English.",
+  "你是中文播客转写“小册子”结构化编辑模型。目标是严格将用户提供的 transcript 与 chapter_plan 转成唯一 JSON 对象，内容用于内容生产，不得生成任何附加文字。",
+  "1) 只输出一个合法 JSON 对象，不要 Markdown、注释、解释、标题或总结性额外文本。",
+  "2) 严格按 transcript + chapter_plan 作答，不得使用外部知识，不得编造任何事实、观点、时间戳、说话人或引文。",
+  '3) 任何字段在证据不足时，正文里必须使用“未在原文中明确说明”，不得猜测。',
+  "4) quote.text 必须为原文忠实摘录，允许删减口头语但不得改写含义；优先沿用原始 speaker 与 timestamp。",
+  "5) chapters 顺序与数量必须与 chapter_plan 完全一致；每章内容仅能使用对应章的 context/evidence，不得跨章挪用引文。",
+  "6) 每章至少 2 条 quotes；action 项需动词开头且可执行；chapter 标题应与 chapter_plan 对齐并可轻微润色。",
+  "7) 输出中文，避免空泛口号和 AI 风格模板话；若任一约束冲突导致缺项，仍按 schema 返回完整字段（可用兜底短语）。",
+  "8) 你必须优先保证 JSON 合法性，其次保证字段完备，其次再追求语言优雅。",
 ].join(" ");
 
 type LlmBookletQuote = {
@@ -22,6 +24,12 @@ type LlmChapterExplanation = {
   coreConcept: string;
   judgmentFramework: string;
   commonMisunderstanding: string;
+};
+
+export type LlmChapterPatch = {
+  points: string[];
+  explanation: LlmChapterExplanation;
+  actions: string[];
 };
 
 type LlmBookletChapter = {
@@ -79,6 +87,8 @@ export type LlmInspectorHooks = {
   onResponse?: (data: LlmInspectorResponse) => void;
   onError?: (message: string) => void;
 };
+
+type PromptProfile = "baseline" | "strict_template_a";
 
 function cleanText(input: string, maxLength = 220): string {
   return input
@@ -242,6 +252,31 @@ function extractFirstJsonObject(input: string): string | null {
   return input.slice(start, end + 1);
 }
 
+function readChapterPatchFromUnknown(value: unknown): LlmChapterPatch | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const root = value as Record<string, unknown>;
+  const points = readStringList(root.points, 5, 180);
+  const explanation = readChapterExplanation(root.explanation);
+  const actions = readStringList(root.actions, 4, 120);
+  if (
+    points.length === 0 &&
+    actions.length === 0 &&
+    !explanation.background &&
+    !explanation.coreConcept &&
+    !explanation.judgmentFramework &&
+    !explanation.commonMisunderstanding
+  ) {
+    return null;
+  }
+  return {
+    points,
+    explanation,
+    actions,
+  };
+}
+
 function buildPrompt(params: {
   title: string;
   language: string;
@@ -250,6 +285,7 @@ function buildPrompt(params: {
   chapterRanges: string[];
   chapterPlans: LlmChapterPlanHint[];
   transcriptText: string;
+  promptProfile: PromptProfile;
 }): string {
   const chapterHint = params.chapterRanges.map((range, index) => `- chapter ${index + 1}: ${range}`).join("\n");
   const chapterPlanHint = params.chapterPlans
@@ -270,6 +306,17 @@ function buildPrompt(params: {
       ].join("\n");
     })
     .join("\n");
+  const strictTemplateRules =
+    params.promptProfile === "strict_template_a"
+      ? [
+          "模板强化要求（Template A 严格模式）：",
+          "- chapters 推荐 5-7 章；每章尽量包含 2-4 条带时间戳引用。",
+          "- TL;DR 每条都要可在 transcript 中找到证据。",
+          "- 可执行行动必须是动词开头、可当天执行的动作。",
+          '- 证据不足时请使用“未在原文中明确说明”，不要编造。',
+        ]
+      : [];
+
   return [
     "任务：将播客转写整理成“知识小册子”结构化草稿（JSON）。",
     "硬性要求：",
@@ -319,6 +366,7 @@ function buildPrompt(params: {
     "- TL;DR 每条都能在 transcript 中找到依据。",
     "- 引用里的时间戳与说话人尽量与原文一致。",
     "- 若 transcript 存在噪音/乱码，避免把噪音作为关键引用。",
+    ...strictTemplateRules,
     `上下文元信息:
 - title: ${params.title}
 - language: ${params.language}
@@ -341,6 +389,7 @@ export async function generateBookletDraftWithLlm(params: {
   chapterRanges: string[];
   chapterPlans: LlmChapterPlanHint[];
   transcriptText: string;
+  promptProfile?: PromptProfile;
   inspector?: LlmInspectorHooks;
 }): Promise<LlmBookletDraft | null> {
   if (!config.llmApiKey) {
@@ -355,6 +404,7 @@ export async function generateBookletDraftWithLlm(params: {
     const prompt = buildPrompt({
       ...params,
       transcriptText,
+      promptProfile: params.promptProfile ?? "baseline",
     });
     const body = {
       model: config.llmModel,
@@ -433,6 +483,95 @@ export async function generateBookletDraftWithLlm(params: {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown LLM exception";
     params.inspector?.onError?.(errorMessage);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function generateChapterPatchWithLlm(params: {
+  title: string;
+  range: string;
+  language: string;
+  sourceType: SourceType;
+  sourceRef: string;
+  transcriptExcerpt: string;
+  promptProfile?: PromptProfile;
+}): Promise<LlmChapterPatch | null> {
+  if (!config.llmApiKey) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(config.llmTimeoutMs, 20000));
+  try {
+    const strictClause =
+      params.promptProfile === "strict_template_a"
+        ? [
+            "严格要求：",
+            "- points 必须具体，不要空话。",
+            "- actions 必须动词开头，可执行。",
+            '- 缺少证据时请写“未在原文中明确说明”。',
+          ].join("\n")
+        : "";
+    const prompt = [
+      "任务：基于给定章节 transcript 片段，输出该章节的结构化补丁 JSON。",
+      "只输出 JSON 对象，不要 markdown，不要解释。",
+      "JSON schema:",
+      `{
+  "points": string[3-5],
+  "explanation": {
+    "background": string,
+    "coreConcept": string,
+    "judgmentFramework": string,
+    "commonMisunderstanding": string
+  },
+  "actions": string[2-4]
+}`,
+      strictClause,
+      `上下文：title=${params.title}; range=${params.range}; language=${params.language}; source_type=${params.sourceType}; source_ref=${params.sourceRef}`,
+      "章节 transcript:",
+      params.transcriptExcerpt.slice(0, 5000),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const body = {
+      model: config.llmModel,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+    };
+
+    const response = await fetch(`${config.llmBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.llmApiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) {
+      return null;
+    }
+    const jsonCandidate = extractFirstJsonObject(content);
+    if (!jsonCandidate) {
+      return null;
+    }
+    const parsed = JSON.parse(jsonCandidate) as unknown;
+    return readChapterPatchFromUnknown(parsed);
+  } catch {
     return null;
   } finally {
     clearTimeout(timeout);

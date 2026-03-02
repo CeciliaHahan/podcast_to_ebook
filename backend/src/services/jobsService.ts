@@ -8,7 +8,7 @@ import {
   setJobInspectorTrace,
   updateJobStatusAndStage,
 } from "../repositories/jobsRepo.js";
-import type { InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
+import type { GenerationMethod, InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
 import type { CreateJobInput, OutputFormat, SourceType } from "../types/domain.js";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -18,6 +18,7 @@ const MAX_ACTIVE_JOBS_PER_USER = 2;
 const MAX_DAILY_JOBS_PER_USER = 10;
 const ACTIVE_JOB_STALE_TIMEOUT_MINUTES = 15;
 const DEFAULT_TEMPLATE_ID = "templateA-v0-book";
+const OUTPUT_FORMAT_PRIORITY: OutputFormat[] = ["epub", "pdf", "md"];
 
 const ACCEPTANCE_COPY =
   "Generated outputs are for personal use or explicitly authorized use only. For personal use only. No commercial usage is allowed here.";
@@ -46,11 +47,12 @@ async function assertUserQuota(userId: string) {
 }
 
 function normalizeOutputFormats(formats: OutputFormat[]): OutputFormat[] {
+  const priority = new Map<OutputFormat, number>(OUTPUT_FORMAT_PRIORITY.map((format, index) => [format, index]));
   const unique = Array.from(new Set(formats));
   if (unique.length === 0) {
     throw new ApiError(400, "INVALID_INPUT", "At least one output format is required.");
   }
-  return unique;
+  return unique.sort((left, right) => (priority.get(left) ?? 100) - (priority.get(right) ?? 100));
 }
 
 function previewText(input: string, maxChars = 3000): string {
@@ -75,6 +77,13 @@ function sanitizeArtifactTitle(input: string | undefined, fallback = "Podcast No
   return clean || fallback;
 }
 
+function readGenerationMethod(value: unknown): GenerationMethod {
+  if (value === "A" || value === "B" || value === "C") {
+    return value;
+  }
+  return "B";
+}
+
 async function runPipelineInline(params: {
   jobId: string;
   sourceType: SourceType;
@@ -95,6 +104,7 @@ async function runPipelineInline(params: {
 
   const transcriptText =
     typeof params.rawInput.metadata?.transcript_text === "string" ? params.rawInput.metadata.transcript_text : "";
+  const generationMethod = readGenerationMethod(params.rawInput.metadata?.generation_method);
 
   pushStage({
     stage: "transcript",
@@ -107,6 +117,7 @@ async function runPipelineInline(params: {
     config: {
       template_id: params.templateId,
       output_formats: params.outputFormats,
+      generation_method: generationMethod,
     },
     notes:
       transcriptText.length > 0
@@ -131,6 +142,7 @@ async function runPipelineInline(params: {
       templateId: params.templateId,
       sourceType: params.sourceType,
       sourceRef: params.sourceRef,
+      generationMethod,
       inspector: pushStage,
     });
 

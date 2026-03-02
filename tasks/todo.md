@@ -1,5 +1,100 @@
 # TODO
 
+## Current Task: Stabilize 3-Method Compare Runner (C Retry + Degraded Label) (2026-03-02)
+
+### Plan
+
+- [x] Add retry logic to compare runner API calls to reduce transient fetch failures.
+- [x] Add method-level retry policy (`C` retries automatically) without aborting whole run.
+- [x] Mark degraded outputs in per-method page and index page (recovered retry / LLM fallback / patch path).
+- [x] Keep run output complete even when one method fails (write method page/json with error details).
+- [x] Run one validation execution and record result path.
+
+### Review
+
+- Updated `scripts/compare-methods.mjs` with:
+  - API-level retry wrapper for transient network/server errors.
+  - method-level retry policy (`C`: up to 3 attempts; `A/B`: single attempt).
+  - non-aborting behavior so one method failure still emits full HTML/JSON results.
+  - degraded tagging and reasons in method pages, index page, and `run-summary.json`.
+  - explicit error block rendering when a method cannot complete.
+- Validation run completed:
+  - `/Users/cecilia/Desktop/workspace/Podcasts_to_ebooks/tasks/method-compare/2026-03-02T09-00-48-427Z/index.html`
+  - `/Users/cecilia/Desktop/workspace/Podcasts_to_ebooks/tasks/method-compare/2026-03-02T09-00-48-427Z/diff-highlight.html`
+
+## Current Task: Release-Ready Quality Pipeline Alignment (2026-03-02)
+
+### Plan
+
+- [x] Finalize single-flow user path:
+  - 用户仅提交 transcript（扩展端不再要求模板配置）。
+  - Job 内部自动走模板策略（保留 `templateA-v0-book` 骨架，先做类型感知的参数化输出优化）。
+- [x] Define output format strategy:
+  - 保留 EPUB、PDF、Markdown 三种格式能力；
+  - 先用 EPUB 做质量验收基线，逐步放开 PDF/Markdown 的自动化回归。
+- [x] Improve output quality before visual template refactor:
+  - 先优化 system prompt / 数据清洗 / 生成参数；
+- [x] Add internal source classification (invisible to end-user):
+  - 自动识别 `single / interview / discussion`；
+  - 只用于生成参数，不在 ebook 文本中展示分类标签。
+- [x] Add quality checkpoints:
+  - 章节完整性（`chap_01..14`）；
+  - 元数据一致性（title/language/date/source 同步）；
+  - 无占位符、可读性基本覆盖率（TL;DR、术语、行动、引用）；
+- [ ] Improve UI polish after pipeline stability:
+  - 保持“一步生成”体验；
+  - 视觉和交互只在可读性/反馈层面优化，不改变流程。
+- [ ] Reconnect remaining ingestion flows:
+  - 逐步接入 audio upload、平台链接、RSS 链路；
+  - 按同一 pipeline 返回统一 artifact。
+
+### Review
+
+ - 已完成用户侧无模板输入的一步提交路径：`extension/sidepanel/sidepanel.js` 与 `sidepanel.html` 现在不再携带/展示模板 ID。
+ - 后端 `buildBookletModel` 已开始使用 transcript 源类型 profile（single/interview/discussion）选择 `mergeCaps`，并在最终 normalization 阶段记录 profile 与质量检查结果。
+ - 已把 `jobsService.normalizeOutputFormats` 的排序策略固定为 `epub -> pdf -> md`，用于保障当前质量验收优先走 EPUB。
+ - 已补齐质量检查闭环：Method A/Method B/C 均输出 `quality_issue_count` 与 `quality_issues`，并增加章节完整性、章节索引/sectionId、元数据一致性、TLDR/术语/行动/引用覆盖等项的检测。
+ - 新增 `quality_gate`（阻断项+告警项）规则：当前不阻断作业，但在 inspector 里显式给出 `quality_passed`/`quality_gate`/`quality_blocking_issues`，便于后续接自动重试或阻断策略。
+
+## Current Task: Build 3-Method Ebook Quality Test Harness (2026-03-01)
+
+### Plan
+
+- [x] Add backend generation mode switch (`A` / `B` / `C`) via transcript metadata.
+- [x] Implement method behavior:
+- [x] `A`: parser/rule-first deterministic booklet (no LLM merge),
+- [x] `B`: current semantic plan + LLM merge (baseline),
+- [x] `C`: strict-structure LLM prompt profile + merge.
+- [x] Expose selected method in inspector stage config for transparency.
+- [x] Add a script to run all three methods for one transcript input and collect:
+- [x] create-job request payload,
+- [x] create-job response payload,
+- [x] status/artifacts/inspector payloads,
+- [x] generated ebook content (Markdown artifact).
+- [x] Generate one webpage per method plus an index page for side-by-side review.
+- [x] Run a local smoke run for the harness with sample transcript and report output paths.
+
+### Review
+
+- Backend
+- Added `generation_method` routing (`A`/`B`/`C`) from transcript metadata into pipeline execution.
+- `A` now skips LLM merge and returns parser/rule-first deterministic booklet.
+- `B` keeps current semantic-plan + LLM merge behavior (baseline).
+- `C` uses stricter Template-A prompt profile before merge.
+- Inspector now includes method info in normalization/transcript configs.
+- Files: `backend/src/services/jobsService.ts`, `backend/src/repositories/jobsRepo.ts`, `backend/src/services/bookletLlm.ts`.
+- Harness
+- Added executable script: `scripts/compare-methods.mjs`.
+- For one transcript input, script runs A/B/C jobs and exports:
+- one page per method (`method-A.html`, `method-B.html`, `method-C.html`),
+- full payload JSON per method,
+- `index.html` for navigation,
+- includes create request/response, inspector payload, LLM request/response stages, and markdown ebook content.
+- Validation
+- `cd backend && npm run typecheck` passed.
+- Sample run succeeded for all three methods:
+- Output dir: `tasks/method-compare/2026-03-02T07-05-42-423Z/index.html`.
+
 ## Current Task: Simplify Extension To EPUB-Only Flow (2026-03-01)
 
 ### Plan
@@ -720,3 +815,12 @@
 - Remaining gap: true chapter summarization quality requires an LLM summarization stage with structured JSON output (contract-first), not only heuristic extraction.
 - Current local env check shows `OPENAI_API_KEY` is empty, so LLM stage is installed but not active yet.
 - The same contract now explicitly governs PDF/Markdown rendering to keep structure parity across formats.
+
+## 2026-03-02 Prompt update (User requested v1)
+
+- [x] 替换 `backend/src/services/bookletLlm.ts` 的 `SYSTEM_PROMPT` 为 v1（更强但兼容的中文硬约束版）。
+- [x] 保持现有 `buildPrompt` / JSON contract 不变，仅调整系统约束层。
+
+### Review
+- 为什么改：当前 system 提示过短，未能在最上层持续强化“章级对齐、证据边界、兜底完整性”；v1 在不动现有解析链路的前提下显式补齐。
+- 风险：严格约束可能在极端噪音转写时触发更多“未在原文中明确说明”，但不影响 JSON 可解析。

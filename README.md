@@ -83,3 +83,34 @@ or
 
 - Manifest + popup + side panel UI are in `extension/`.
 - Load instructions: `extension/README.md`.
+
+## End-to-end generation flow
+
+```mermaid
+flowchart TD
+  A[User submits transcript in side panel] --> B[Backend validate request + defaults]
+  B --> C[Create job + persist metadata]
+  C --> D[runPipelineInline]
+  D --> E[buildBookletModel]
+  E --> F[parse + normalize transcript]
+  F --> G[segment + plan chapters]
+  G --> H[build draft model]
+  H --> I[LLM enhancement]
+  I --> J{LLM API call}
+  J -->|success| K[merge llm draft into model]
+  J -->|fallback| L[chapter-level retry/patch]
+  L --> M[merge fallback patch]
+  K --> N[render outputs]
+  M --> N
+  N --> O[write markdown / pdf / epub]
+  O --> P[quality checks: chapter count, metadata consistency, no placeholders]
+  P --> Q[artifact persisted + signed/recorded for download]
+  Q --> R[Frontend poll status + inspector + artifacts]
+```
+
+### How template and prompts are used
+
+- The runtime template id is currently kept as a stable default (`templateA-v0-book`) and acts as a canonical structure contract.
+- System prompts are applied in `bookletLlm` when optional LLM enhancement is enabled.
+- LLM is invoked at the draft/patch step in the pipeline (see `generateBookletDraftWithLlm` and `generateChapterPatchWithLlm`).
+- Final output rendering still uses the same `BookletModel` across epub/pdf/md to keep section order and metadata aligned.
