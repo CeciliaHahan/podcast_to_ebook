@@ -6,7 +6,7 @@ import {
   updateJobStatusAndStage,
 } from "../repositories/jobsRepo.js";
 import type { GenerationMethod, InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
-import type { CreateJobInput, OutputFormat, SourceType } from "../types/domain.js";
+import type { CreateJobInput, OutputFormat } from "../types/domain.js";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
 const DEFAULT_TEMPLATE_ID = "templateA-v0-book";
@@ -61,7 +61,6 @@ function readGenerationMethod(value: unknown): GenerationMethod {
 
 async function runPipelineInline(params: {
   jobId: string;
-  sourceType: SourceType;
   title?: string;
   language?: string;
   templateId: string;
@@ -84,7 +83,7 @@ async function runPipelineInline(params: {
   pushStage({
     stage: "transcript",
     input: {
-      source_type: params.sourceType,
+      source_type: "transcript",
       source_ref: params.sourceRef ?? null,
       transcript_chars: transcriptText.length,
       transcript_preview: previewText(transcriptText, 2500),
@@ -115,7 +114,7 @@ async function runPipelineInline(params: {
       language: params.language ?? "zh-CN",
       transcriptText,
       templateId: params.templateId,
-      sourceType: params.sourceType,
+      sourceType: "transcript",
       sourceRef: params.sourceRef,
       generationMethod,
       inspector: pushStage,
@@ -148,14 +147,12 @@ async function runPipelineInline(params: {
 
 async function createAndRunJob(params: {
   userId: string;
-  sourceType: SourceType;
   title?: string;
   language?: string;
   templateId?: string;
   outputFormats: OutputFormat[];
   sourceRef?: string;
   inputCharCount?: number;
-  inputDurationSeconds?: number;
   compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
   rawInput: CreateJobInput["rawInput"];
 }) {
@@ -167,14 +164,12 @@ async function createAndRunJob(params: {
 
   const job = await createJob({
     userId: params.userId,
-    sourceType: params.sourceType,
     title: resolvedTitle,
     language: params.language,
     templateId: resolvedTemplateId,
     outputFormats,
     sourceRef: params.sourceRef,
     inputCharCount: params.inputCharCount,
-    inputDurationSeconds: params.inputDurationSeconds,
     compliance: {
       forPersonalOrAuthorizedUseOnly: params.compliance.for_personal_or_authorized_use_only,
       noCommercialUse: params.compliance.no_commercial_use,
@@ -186,7 +181,6 @@ async function createAndRunJob(params: {
   if (job.status === "queued") {
     await runPipelineInline({
       jobId: job.jobId,
-      sourceType: params.sourceType,
       title: resolvedTitle,
       language: params.language,
       templateId: resolvedTemplateId,
@@ -215,7 +209,6 @@ export async function createTranscriptJob(params: {
 
   return createAndRunJob({
     userId: params.userId,
-    sourceType: "transcript",
     title: params.title,
     language: params.language,
     templateId: params.templateId,

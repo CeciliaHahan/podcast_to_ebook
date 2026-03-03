@@ -128,23 +128,21 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string;
     const insertJob = await client.query<{ created_at: string }>(
       `INSERT INTO jobs
          (id, user_id, source_type, status, progress, stage, title, language, template_id,
-          output_formats, source_ref, input_char_count, input_duration_seconds,
+          output_formats, source_ref, input_char_count,
           compliance_record_id)
        VALUES
-         ($1, $2, $3, 'queued', 0, 'queued', $4, $5, $6,
-          $7::jsonb, $8, $9, $10, $11)
+         ($1, $2, 'transcript'::source_type, 'queued', 0, 'queued', $3, $4, $5,
+          $6::jsonb, $7, $8, $9)
        RETURNING created_at`,
       [
         jobId,
         input.userId,
-        input.sourceType,
         input.title ?? null,
         input.language ?? null,
         input.templateId,
         JSON.stringify(input.outputFormats),
         input.sourceRef ?? null,
         input.inputCharCount ?? null,
-        input.inputDurationSeconds ?? null,
         complianceId,
       ],
     );

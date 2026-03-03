@@ -9,14 +9,12 @@ export type AuthUser = {
 
 export type CreateJobInput = {
   userId: string;
-  sourceType: SourceType;
   title?: string;
   language?: string;
   templateId: string;
   outputFormats: OutputFormat[];
   sourceRef?: string;
   inputCharCount?: number;
-  inputDurationSeconds?: number;
   compliance: {
     forPersonalOrAuthorizedUseOnly: boolean;
     noCommercialUse: boolean;
