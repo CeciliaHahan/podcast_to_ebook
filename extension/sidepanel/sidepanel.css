@@ -17,7 +17,7 @@ body {
   min-height: 100vh;
   background: linear-gradient(165deg, #f8fbff 0%, #edf3ff 45%, #f2f8ff 100%);
   color: var(--ink);
-  font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
 }
 
 .bg-shape {
@@ -66,14 +66,6 @@ body {
   border-left: 5px solid var(--accent);
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-}
-
 h1,
 h2 {
   margin: 0 0 8px;
@@ -82,16 +74,11 @@ h2 {
 
 h1 {
   font-size: 24px;
+  margin-bottom: 0;
 }
 
 h2 {
   font-size: 16px;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .grid {
@@ -130,16 +117,6 @@ textarea {
 textarea {
   min-height: 140px;
   resize: vertical;
-}
-
-.format-pill {
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #b7e2dd;
-  background: #ecfffc;
-  color: #0f5f59;
-  font-size: 12px;
 }
 
 .checks {
@@ -184,6 +161,41 @@ button:hover {
 button.ghost {
   background: var(--accent-soft);
   color: #0f5f59;
+}
+
+.details-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fdfefe;
+}
+
+.details-card > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 700;
+  list-style: none;
+  padding: 9px 10px;
+}
+
+.details-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-card > summary::after {
+  content: "展开";
+  float: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.details-card[open] > summary::after {
+  content: "收起";
+}
+
+.details-body {
+  padding: 0 10px 10px;
 }
 
 .status-line {

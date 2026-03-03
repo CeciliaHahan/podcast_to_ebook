@@ -31,6 +31,26 @@ const elements = {
 
 let pollTimer = null;
 let didAutoSwitchBaseUrl = false;
+const STATUS_LABELS = {
+  idle: "待命",
+  queued: "排队中",
+  processing: "处理中",
+  succeeded: "已完成",
+  failed: "失败",
+  canceled: "已取消",
+};
+
+const STAGE_LABELS = {
+  queued: "排队",
+  ingest: "输入处理",
+  normalization: "规范化",
+  llm_request: "模型请求",
+  llm_response: "模型响应",
+  render: "渲染",
+  pdf: "PDF 渲染",
+  epub: "EPUB 渲染",
+  finalize: "收尾",
+};
 
 function sanitizeGeneratedTitle(rawTitle) {
   return String(rawTitle || "")
@@ -99,7 +119,7 @@ function autoGenerateTitle(transcript) {
   }
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  return `Podcast Notes ${dateStr}`;
+  return `播客笔记 ${dateStr}`;
 }
 
 function showSettingsFeedback(message, isError = false) {
@@ -119,7 +139,7 @@ function clearError() {
 
 function toJsonPreview(value, maxChars = 6000) {
   if (value === undefined) {
-    return "(none)";
+    return "（无）";
   }
   let text = "";
   try {
@@ -130,13 +150,23 @@ function toJsonPreview(value, maxChars = 6000) {
   if (text.length <= maxChars) {
     return text;
   }
-  return `${text.slice(0, maxChars)}\n... <truncated>`;
+  return `${text.slice(0, maxChars)}\n... <已截断>`;
+}
+
+function localizeStatus(status) {
+  const key = String(status || "").trim().toLowerCase();
+  return STATUS_LABELS[key] || status || "待命";
+}
+
+function localizeStage(stage) {
+  const key = String(stage || "").trim().toLowerCase();
+  return STAGE_LABELS[key] || stage || "-";
 }
 
 function renderStatus(data) {
   elements.jobId.textContent = data.job_id || "-";
-  elements.jobStatus.textContent = data.status || "idle";
-  elements.jobStage.textContent = data.stage || "-";
+  elements.jobStatus.textContent = localizeStatus(data.status);
+  elements.jobStage.textContent = localizeStage(data.stage);
   const progress = Number(data.progress || 0);
   elements.jobProgress.textContent = `${progress}%`;
   elements.meterFill.style.width = `${Math.min(100, Math.max(0, progress))}%`;
@@ -145,7 +175,7 @@ function renderStatus(data) {
 function renderArtifacts(data) {
   elements.artifactsList.innerHTML = "";
   if (!data?.artifacts?.length) {
-    elements.artifactsList.innerHTML = "<li>No artifacts yet.</li>";
+    elements.artifactsList.innerHTML = "<li>暂无可下载产物。</li>";
     return;
   }
   for (const item of data.artifacts) {
@@ -154,7 +184,7 @@ function renderArtifacts(data) {
     li.innerHTML = `<a class="artifact-card-link" href="${item.download_url}" target="_blank" rel="noreferrer">
       <div class="artifact-type">${item.type.toUpperCase()}</div>
       <div>${item.file_name}</div>
-      <div>${item.size_bytes} bytes · expires ${new Date(item.expires_at).toLocaleString()}</div>
+      <div>${item.size_bytes} 字节 · 过期时间 ${new Date(item.expires_at).toLocaleString()}</div>
     </a>`;
     elements.artifactsList.appendChild(li);
   }
@@ -163,17 +193,17 @@ function renderArtifacts(data) {
 function renderInspector(data) {
   elements.eventsList.innerHTML = "";
   if (!data?.stages?.length) {
-    elements.eventsList.innerHTML = "<li>No inspector stages yet.</li>";
+    elements.eventsList.innerHTML = "<li>暂无调试阶段信息。</li>";
     return;
   }
   for (const stage of data.stages) {
     const li = document.createElement("li");
-    const note = stage.notes ? `\nnotes: ${stage.notes}` : "";
+    const note = stage.notes ? `\n备注: ${stage.notes}` : "";
     li.textContent =
-      `${new Date(stage.ts).toLocaleTimeString()} · ${stage.stage}` +
-      `\ninput: ${toJsonPreview(stage.input)}` +
-      `\nconfig: ${toJsonPreview(stage.config)}` +
-      `\noutput: ${toJsonPreview(stage.output)}${note}`;
+      `${new Date(stage.ts).toLocaleTimeString()} · ${localizeStage(stage.stage)}` +
+      `\n输入: ${toJsonPreview(stage.input)}` +
+      `\n配置: ${toJsonPreview(stage.config)}` +
+      `\n输出: ${toJsonPreview(stage.output)}${note}`;
     elements.eventsList.appendChild(li);
   }
 }
@@ -238,14 +268,14 @@ function isLikelyNetworkFetchError(error) {
 
 function formatNetworkFetchMessage(path, triedBaseUrls, error) {
   const triedLines = triedBaseUrls.map((baseUrl) => `- ${baseUrl}${path}`).join("\n");
-  const browserMessage = error instanceof Error ? error.message : "Failed to fetch";
+  const browserMessage = error instanceof Error ? error.message : "请求失败";
   return [
     "无法连接到后端 API（网络请求失败）。",
     "已尝试请求：",
     triedLines,
     "排查建议：",
     "1) 确认后端在运行：打开 http://localhost:8080/healthz，应该返回 ok。",
-    "2) 检查 API Base URL（建议 http://localhost:8080）。",
+    "2) 检查 API 地址（建议 http://localhost:8080）。",
     "3) 检查 Token 是否有效（例如 dev:cecilia@example.com）。",
     "4) 在项目根目录执行 ./scripts/dev-up.sh；再用 ./scripts/dev-smoke.sh 验证。",
     "5) 若仍不通，单独启动后端：cd backend && npm run start。",
@@ -318,7 +348,7 @@ async function apiRequest(path, method, body) {
         const nextSettings = { ...settings, apiBaseUrl: baseUrl };
         await storageSet({ [STORAGE_KEY]: nextSettings });
         elements.apiBaseUrl.value = baseUrl;
-        showSettingsFeedback(`Connected via ${baseUrl}. API Base URL auto-updated.`);
+        showSettingsFeedback(`已自动切换到可连接地址：${baseUrl}`);
       }
       return jsonBody;
     } catch (error) {
@@ -373,7 +403,7 @@ async function startPolling(jobId) {
       }
     } catch (error) {
       stopPolling();
-      renderError(error instanceof Error ? error.message : "Unknown polling error");
+      renderError(error instanceof Error ? error.message : "轮询状态失败");
     }
   }, 1200);
 }
@@ -382,11 +412,11 @@ async function handleCreateJob(event) {
   event.preventDefault();
   clearError();
   elements.submitJob.disabled = true;
-  elements.submitJob.textContent = "Submitting...";
+  elements.submitJob.textContent = "提交中...";
   try {
     await saveSettings();
     if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
-      throw new Error("Compliance declarations must be checked.");
+      throw new Error("请先确认使用声明。");
     }
 
     const resolvedTitle = elements.title.value.trim() || autoGenerateTitle(elements.transcriptText.value);
@@ -408,19 +438,19 @@ async function handleCreateJob(event) {
 
     const created = await apiRequest("/v1/jobs/from-transcript", "POST", payload);
     renderStatus({ job_id: created.job_id, status: created.status, progress: 0, stage: "queued" });
-    elements.artifactsList.innerHTML = "<li>Waiting for EPUB artifact...</li>";
-    elements.eventsList.innerHTML = "<li>Waiting for inspector stages...</li>";
+    elements.artifactsList.innerHTML = "<li>正在等待 EPUB 产物...</li>";
+    elements.eventsList.innerHTML = "<li>正在等待调试阶段信息...</li>";
     await startPolling(created.job_id);
   } catch (error) {
-    renderError(error instanceof Error ? error.message : "Failed to submit job");
+    renderError(error instanceof Error ? error.message : "提交任务失败");
   } finally {
     elements.submitJob.disabled = false;
-    elements.submitJob.textContent = "Generate EPUB";
+    elements.submitJob.textContent = "开始生成 EPUB";
   }
 }
 
 function loadSample() {
-  elements.title.value = "Sample Dense Podcast Episode";
+  elements.title.value = "示例播客：从信息输入到可执行输出";
   elements.language.value = "zh-CN";
   elements.episodeUrl.value = "https://example.com/episodes/sample";
   elements.transcriptText.value =
@@ -453,14 +483,14 @@ async function init() {
   elements.saveSettings.addEventListener("click", async () => {
     try {
       elements.saveSettings.disabled = true;
-      elements.saveSettings.textContent = "Saving...";
+      elements.saveSettings.textContent = "保存中...";
       await saveSettings();
-      showSettingsFeedback("Settings saved.");
+      showSettingsFeedback("设置已保存。");
     } catch (error) {
-      showSettingsFeedback(error instanceof Error ? `Save failed: ${error.message}` : "Save failed.", true);
+      showSettingsFeedback(error instanceof Error ? `保存失败：${error.message}` : "保存失败。", true);
     } finally {
       elements.saveSettings.disabled = false;
-      elements.saveSettings.textContent = "Save Settings";
+      elements.saveSettings.textContent = "保存设置";
     }
   });
   elements.loadSample.addEventListener("click", loadSample);

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Podcasts to Ebooks Workspace</title>
+    <title>播客转电子书工作台</title>
     <link rel="stylesheet" href="./sidepanel.css" />
   </head>
   <body>
@@ -11,73 +11,49 @@
     <div class="bg-shape bg-shape-b"></div>
     <main class="layout">
       <header class="card hero">
-        <p class="eyebrow">Workspace</p>
-        <h1>Transcript to EPUB</h1>
-        <p class="subtitle">Simple flow: transcript in, EPUB out, with stage-by-stage inspector visibility.</p>
+        <h1>播客转 EPUB</h1>
       </header>
 
-      <section class="card settings">
-        <h2>Connection</h2>
-        <div class="grid">
-          <label>
-            API Base URL
-            <input id="api-base-url" type="url" placeholder="http://localhost:8080" />
-          </label>
-          <label>
-            Bearer Token
-            <input id="api-token" type="text" placeholder="dev:cecilia@example.com" />
-          </label>
-        </div>
-        <div class="actions">
-          <button id="save-settings" type="button">Save Settings</button>
-          <button id="load-sample" type="button" class="ghost">Load Sample Transcript</button>
-        </div>
-        <p id="settings-feedback" class="feedback" aria-live="polite"></p>
-      </section>
-
       <section class="card composer">
-        <h2>Create EPUB Job (Transcript)</h2>
+        <h2>生成任务</h2>
         <form id="transcript-form">
-          <div class="grid">
-            <label>
-              Episode Title
-              <input id="title" type="text" maxlength="300" placeholder="Leave blank to auto-generate" />
-              <span class="micro-hint">If empty, title is generated from transcript.</span>
-            </label>
-            <label>
-              Language
-              <input id="language" type="text" value="zh-CN" required />
-            </label>
-          </div>
-          <div class="grid">
-            <label>
-              Episode URL (optional)
-              <input id="episode-url" type="url" placeholder="https://example.com/episode/1" />
-            </label>
-          </div>
           <label>
-            Transcript
-            <textarea id="transcript-text" required maxlength="120000"></textarea>
+            节目标题（可选）
+            <input id="title" type="text" maxlength="300" placeholder="留空将自动生成标题" />
+            <span class="micro-hint">留空后会从转录文本自动提取标题。</span>
           </label>
-          <p class="format-pill">Output format is fixed to: <strong>EPUB</strong></p>
+          <input id="language" type="hidden" value="zh-CN" required />
+          <details class="details-card">
+            <summary>高级选项</summary>
+            <div class="details-body">
+              <label>
+                节目链接（可选）
+                <input id="episode-url" type="url" placeholder="https://example.com/episode/1" />
+              </label>
+            </div>
+          </details>
+          <label>
+            转录文本
+            <textarea id="transcript-text" required maxlength="120000" placeholder="粘贴完整转录文本"></textarea>
+          </label>
           <div class="checks">
-            <label><input id="check-personal" type="checkbox" checked /> Personal/authorized use only</label>
-            <label><input id="check-noncommercial" type="checkbox" checked /> No commercial use</label>
+            <label><input id="check-personal" type="checkbox" checked /> 仅用于个人学习或已获授权场景</label>
+            <label><input id="check-noncommercial" type="checkbox" checked /> 不用于商业用途</label>
           </div>
-          <button id="submit-job" type="submit">Generate EPUB</button>
+          <button id="submit-job" type="submit">开始生成 EPUB</button>
         </form>
       </section>
 
       <section class="card status">
-        <h2>Job Status</h2>
+        <h2>任务状态</h2>
         <div class="status-line">
-          <span>Current Job</span>
+          <span>当前任务</span>
           <code id="job-id">-</code>
         </div>
         <div class="status-grid">
-          <p><strong>Status:</strong> <span id="job-status">idle</span></p>
-          <p><strong>Stage:</strong> <span id="job-stage">-</span></p>
-          <p><strong>Progress:</strong> <span id="job-progress">0%</span></p>
+          <p><strong>状态：</strong> <span id="job-status">待命</span></p>
+          <p><strong>阶段：</strong> <span id="job-stage">-</span></p>
+          <p><strong>进度：</strong> <span id="job-progress">0%</span></p>
         </div>
         <div class="meter">
           <div id="meter-fill"></div>
@@ -86,13 +62,40 @@
       </section>
 
       <section class="card outputs">
-        <h2>Artifacts</h2>
+        <h2>下载结果</h2>
         <ul id="artifacts-list"></ul>
       </section>
 
       <section class="card events">
-        <h2>Inspector</h2>
-        <ul id="events-list"></ul>
+        <details class="details-card">
+          <summary>调试信息（阶段追踪）</summary>
+          <div class="details-body">
+            <ul id="events-list"></ul>
+          </div>
+        </details>
+      </section>
+
+      <section class="card settings">
+        <details class="details-card">
+          <summary>连接设置（调试）</summary>
+          <div class="details-body">
+            <div class="grid">
+              <label>
+                API 地址
+                <input id="api-base-url" type="url" placeholder="http://localhost:8080" />
+              </label>
+              <label>
+                令牌（Bearer Token）
+                <input id="api-token" type="text" placeholder="dev:cecilia@example.com" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="save-settings" type="button">保存设置</button>
+              <button id="load-sample" type="button" class="ghost">填充示例文本</button>
+            </div>
+            <p id="settings-feedback" class="feedback" aria-live="polite"></p>
+          </div>
+        </details>
       </section>
     </main>
     <script src="./sidepanel.js" type="module"></script>
