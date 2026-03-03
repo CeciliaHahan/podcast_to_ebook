@@ -93,43 +93,6 @@ function pushInspectorStage(
   collector(stage);
 }
 
-export async function countActiveJobs(userId: string): Promise<number> {
-  const result = await db.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM jobs
-      WHERE user_id = $1 AND status IN ('queued', 'processing')`,
-    [userId],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
-export async function countDailyJobs(userId: string): Promise<number> {
-  const result = await db.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM jobs
-      WHERE user_id = $1
-        AND created_at::date = CURRENT_DATE`,
-    [userId],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
-export async function failStaleActiveJobs(userId: string, staleMinutes: number): Promise<number> {
-  const result = await db.query(
-    `UPDATE jobs
-        SET status = 'failed'::job_status,
-            error_code = 'STALE_ACTIVE_JOB_RECOVERED',
-            error_message = 'Auto-marked failed after stale active timeout.',
-            finished_at = CASE WHEN finished_at IS NULL THEN NOW() ELSE finished_at END,
-            updated_at = NOW()
-      WHERE user_id = $1
-        AND status IN ('queued'::job_status, 'processing'::job_status)
-        AND updated_at < NOW() - ($2::int * INTERVAL '1 minute')`,
-    [userId, staleMinutes],
-  );
-  return result.rowCount ?? 0;
-}
-
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {

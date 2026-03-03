@@ -1,10 +1,7 @@
 import { ApiError } from "../lib/errors.js";
 import {
-  countActiveJobs,
-  countDailyJobs,
   createArtifacts,
   createJob,
-  failStaleActiveJobs,
   setJobInspectorTrace,
   updateJobStatusAndStage,
 } from "../repositories/jobsRepo.js";
@@ -12,11 +9,6 @@ import type { GenerationMethod, InspectorPushInput, InspectorStageRecord } from 
 import type { CreateJobInput, OutputFormat, SourceType } from "../types/domain.js";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
-const MAX_AUDIO_BYTES = 300 * 1024 * 1024;
-const MAX_AUDIO_SECONDS = 180 * 60;
-const MAX_ACTIVE_JOBS_PER_USER = 2;
-const MAX_DAILY_JOBS_PER_USER = 10;
-const ACTIVE_JOB_STALE_TIMEOUT_MINUTES = 15;
 const DEFAULT_TEMPLATE_ID = "templateA-v0-book";
 const OUTPUT_FORMAT_PRIORITY: OutputFormat[] = ["epub", "pdf", "md"];
 
@@ -26,23 +18,6 @@ const ACCEPTANCE_COPY =
 function assertCompliance(input: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean }) {
   if (!input.for_personal_or_authorized_use_only || !input.no_commercial_use) {
     throw new ApiError(400, "FORBIDDEN", "Compliance declaration must be accepted.");
-  }
-}
-
-async function assertUserQuota(userId: string) {
-  const [daily, initialActive] = await Promise.all([countDailyJobs(userId), countActiveJobs(userId)]);
-  let active = initialActive;
-  if (active >= MAX_ACTIVE_JOBS_PER_USER) {
-    const reclaimed = await failStaleActiveJobs(userId, ACTIVE_JOB_STALE_TIMEOUT_MINUTES);
-    if (reclaimed > 0) {
-      active = await countActiveJobs(userId);
-    }
-  }
-  if (active >= MAX_ACTIVE_JOBS_PER_USER) {
-    throw new ApiError(429, "ACTIVE_JOB_LIMIT_EXCEEDED", "Too many active jobs. Try again later.");
-  }
-  if (daily >= MAX_DAILY_JOBS_PER_USER) {
-    throw new ApiError(429, "DAILY_QUOTA_EXCEEDED", "Daily quota exceeded.");
   }
 }
 
@@ -187,7 +162,6 @@ async function createAndRunJob(params: {
   userAgent?: string | null;
   idempotencyKey?: string | null;
 }) {
-  await assertUserQuota(params.userId);
   assertCompliance(params.compliance);
 
   const resolvedTitle = sanitizeArtifactTitle(params.title, "Podcast Notes");
@@ -271,106 +245,8 @@ export async function createTranscriptJob(params: {
   });
 }
 
-export async function createRssJob(params: {
-  userId: string;
-  rssUrl: string;
-  episodeId: string;
-  templateId?: string;
-  outputFormats: OutputFormat[];
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
-}) {
-  return createAndRunJob({
-    userId: params.userId,
-    sourceType: "rss",
-    templateId: params.templateId,
-    outputFormats: params.outputFormats,
-    sourceRef: `${params.rssUrl}#${params.episodeId}`,
-    compliance: params.compliance,
-    rawInput: {
-      rssUrl: params.rssUrl,
-      rssEpisodeId: params.episodeId,
-    },
-    requestIp: params.requestIp,
-    userAgent: params.userAgent,
-    idempotencyKey: params.idempotencyKey,
-  });
-}
-
-export async function createLinkJob(params: {
-  userId: string;
-  episodeUrl: string;
-  templateId?: string;
-  outputFormats: OutputFormat[];
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
-}) {
-  return createAndRunJob({
-    userId: params.userId,
-    sourceType: "link",
-    templateId: params.templateId,
-    outputFormats: params.outputFormats,
-    sourceRef: params.episodeUrl,
-    compliance: params.compliance,
-    rawInput: {
-      episodeUrl: params.episodeUrl,
-    },
-    requestIp: params.requestIp,
-    userAgent: params.userAgent,
-    idempotencyKey: params.idempotencyKey,
-  });
-}
-
-export async function createAudioJob(params: {
-  userId: string;
-  fileName: string;
-  fileSize: number;
-  durationSeconds?: number;
-  title?: string;
-  language?: string;
-  templateId?: string;
-  outputFormats: OutputFormat[];
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
-}) {
-  if (params.fileSize > MAX_AUDIO_BYTES) {
-    throw new ApiError(413, "AUDIO_TOO_LARGE", "Audio file exceeds 300MB limit.");
-  }
-  if (typeof params.durationSeconds === "number" && params.durationSeconds > MAX_AUDIO_SECONDS) {
-    throw new ApiError(400, "AUDIO_TOO_LONG", "Audio exceeds 180 minutes.");
-  }
-
-  return createAndRunJob({
-    userId: params.userId,
-    sourceType: "audio",
-    title: params.title,
-    language: params.language,
-    templateId: params.templateId,
-    outputFormats: params.outputFormats,
-    sourceRef: params.fileName,
-    inputDurationSeconds: params.durationSeconds,
-    compliance: params.compliance,
-    rawInput: {
-      audioStorageUri: `memory://audio/${Date.now()}-${params.fileName}`,
-    },
-    requestIp: params.requestIp,
-    userAgent: params.userAgent,
-    idempotencyKey: params.idempotencyKey,
-  });
-}
-
 export function getServiceLimits() {
   return {
     maxTranscriptChars: MAX_TRANSCRIPT_CHARS,
-    maxAudioBytes: MAX_AUDIO_BYTES,
-    maxAudioSeconds: MAX_AUDIO_SECONDS,
-    maxActiveJobsPerUser: MAX_ACTIVE_JOBS_PER_USER,
-    maxDailyJobsPerUser: MAX_DAILY_JOBS_PER_USER,
   };
 }

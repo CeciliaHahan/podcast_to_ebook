@@ -22,40 +22,6 @@ export type CreateTranscriptJobRequest = {
   compliance_declaration: ComplianceDeclaration;
 };
 
-export type CreateRssJobRequest = {
-  rss_url: string;
-  episode_id: string;
-  template_id?: string;
-  output_formats: OutputFormat[];
-  compliance_declaration: ComplianceDeclaration;
-};
-
-export type CreateLinkJobRequest = {
-  episode_url: string;
-  template_id?: string;
-  output_formats: OutputFormat[];
-  compliance_declaration: ComplianceDeclaration;
-};
-
-export type ParseRssRequest = {
-  rss_url: string;
-};
-
-export type ParseRssResponse = {
-  podcast: {
-    title: string;
-    author?: string;
-    language?: string;
-  };
-  episodes: Array<{
-    episode_id: string;
-    title: string;
-    published_at?: string;
-    audio_url?: string;
-    link?: string;
-  }>;
-};
-
 export type JobStatusResponse = {
   job_id: string;
   status: JobStatus;
