@@ -1,5 +1,38 @@
 # TODO
 
+## Current Task: Phase 5 EPUB alias becomes EPUB-only request contract (2026-03-04)
+
+### Plan
+
+- [x] Keep `/v1/jobs/from-transcript` backward-compatible.
+- [x] Make `/v1/epub/from-transcript` accept transcript payload without `output_formats`.
+- [x] Update sidepanel submit payload to match EPUB-only contract.
+- [x] Update OpenAPI/README contract docs.
+- [x] Extend regression script to test both payload styles.
+- [x] Run validation:
+  - backend typecheck,
+  - sidepanel syntax check,
+  - legacy jobs-path regression,
+  - alias-path regression with `INCLUDE_OUTPUT_FORMATS=0`.
+
+### Review
+
+- Added dedicated alias request schema in `backend/src/routes/v1.ts`:
+  - `/v1/jobs/from-transcript` still uses `output_formats`,
+  - `/v1/epub/from-transcript` now maps to forced `outputFormats: ["epub"]`.
+- Sidepanel payload simplified in `extension/sidepanel/sidepanel.js`:
+  - removed `output_formats` from submit payload.
+- OpenAPI and README updated:
+  - `docs/openapi.v1.yaml` now defines `CreateEpubFromTranscriptRequest`,
+  - `README.md` clarifies alias endpoint is EPUB-only and does not require `output_formats`.
+- Regression script upgraded:
+  - `scripts/regression-transcript-flow.sh` now supports `INCLUDE_OUTPUT_FORMATS=0|1`.
+- Validation results:
+  - `cd backend && npm run typecheck` passed.
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_7d31be4d5d05d57c`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_2e8cddfbf2e24f06`.
+
 ## Current Task: Phase 4 transcript-only internals in job creation path (2026-03-04)
 
 ### Plan

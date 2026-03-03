@@ -23,7 +23,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateTranscriptJobRequest"
+              $ref: "#/components/schemas/CreateEpubFromTranscriptRequest"
       responses:
         "202":
           description: Job accepted
@@ -201,6 +201,33 @@ components:
           uniqueItems: true
           items:
             $ref: "#/components/schemas/OutputFormat"
+        metadata:
+          $ref: "#/components/schemas/CommonMetadata"
+        compliance_declaration:
+          $ref: "#/components/schemas/ComplianceDeclaration"
+    CreateEpubFromTranscriptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - language
+        - transcript_text
+        - compliance_declaration
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        language:
+          type: string
+          example: zh-CN
+        transcript_text:
+          type: string
+          minLength: 10
+          maxLength: 120000
+        template_id:
+          type: string
+          default: templateA-v0-book
         metadata:
           $ref: "#/components/schemas/CommonMetadata"
         compliance_declaration:
