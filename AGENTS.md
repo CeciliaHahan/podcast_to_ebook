@@ -1,6 +1,9 @@
 # AGENTS Guide (Solo Project)
 
 This project is for one user. Keep all work simple, direct, and low-overhead.
+This project is mainly for Ceci and her friends.
+Ceci comes from a strategy researcher background and is not a technical programmer.
+Assume collaborators may be non-engineers: explain clearly, keep implementation practical, and do not over-engineer.
 
 ## Core Intent
 
