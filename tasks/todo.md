@@ -1,5 +1,31 @@
 # TODO
 
+## Current Task: Phase 6 inline-create response reflects real completion state (2026-03-04)
+
+### Plan
+
+- [x] Remove synthetic `queued` create response for inline pipeline success path.
+- [x] Keep backward compatibility for clients that still poll.
+- [x] Update API contracts/types to allow `status: succeeded` at create time.
+- [x] Run validation:
+  - backend typecheck,
+  - jobs-path regression script,
+  - alias-path regression script (no `output_formats`),
+  - `dev-smoke.sh`.
+
+### Review
+
+- Updated `backend/src/services/jobsService.ts`:
+  - when inline pipeline succeeds, create response now returns `status: "succeeded"` instead of synthetic `queued`.
+- Updated contracts:
+  - `docs/openapi.v1.yaml` `JobAcceptedResponse.status` now allows `queued | succeeded`.
+  - `extension/src/api/types.ts` `JobAcceptedResponse.status` updated to `\"queued\" | \"succeeded\"`.
+- Validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b389d9309bba802c`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_dffa6510256baae9`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with create response status `succeeded` (`job_id=job_1508dc29c547c491`).
+
 ## Current Task: Phase 5 EPUB alias becomes EPUB-only request contract (2026-03-04)
 
 ### Plan
