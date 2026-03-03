@@ -426,7 +426,6 @@ async function handleCreateJob(event) {
       title: resolvedTitle,
       language: elements.language.value.trim(),
       transcript_text: elements.transcriptText.value,
-      output_formats: ["epub"],
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
       },

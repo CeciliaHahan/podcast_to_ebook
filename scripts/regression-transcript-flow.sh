@@ -5,19 +5,26 @@ BASE_URL="${BASE_URL:-http://localhost:8080}"
 AUTH_HEADER="${AUTH_HEADER:-Authorization: Bearer dev:cecilia@example.com}"
 POLL_SECONDS="${POLL_SECONDS:-40}"
 CREATE_PATH="${CREATE_PATH:-/v1/jobs/from-transcript}"
+INCLUDE_OUTPUT_FORMATS="${INCLUDE_OUTPUT_FORMATS:-1}"
 
-REQUEST_PAYLOAD='{
-  "title": "Regression Test Episode",
-  "language": "zh-CN",
-  "transcript_text": "这是用于回归测试的转写文本。我们需要验证任务创建、状态查询、产物下载和 inspector 阶段信息都可用。",
-  "template_id": "templateA-v0-book",
-  "output_formats": ["epub", "pdf", "md"],
-  "metadata": {"episode_url": "https://example.com/regression"},
-  "compliance_declaration": {
-    "for_personal_or_authorized_use_only": true,
-    "no_commercial_use": true
-  }
-}'
+REQUEST_PAYLOAD="$(INCLUDE_OUTPUT_FORMATS="$INCLUDE_OUTPUT_FORMATS" node -e '
+const includeOutputFormats = process.env.INCLUDE_OUTPUT_FORMATS !== "0";
+const payload = {
+  title: "Regression Test Episode",
+  language: "zh-CN",
+  transcript_text: "这是用于回归测试的转写文本。我们需要验证任务创建、状态查询、产物下载和 inspector 阶段信息都可用。",
+  template_id: "templateA-v0-book",
+  metadata: { episode_url: "https://example.com/regression" },
+  compliance_declaration: {
+    for_personal_or_authorized_use_only: true,
+    no_commercial_use: true,
+  },
+};
+if (includeOutputFormats) {
+  payload.output_formats = ["epub", "pdf", "md"];
+}
+process.stdout.write(JSON.stringify(payload));
+')"
 
 json_get() {
   local json="$1"

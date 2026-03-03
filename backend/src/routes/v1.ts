@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
@@ -23,6 +23,15 @@ const transcriptRequestSchema = z.object({
   compliance_declaration: complianceSchema,
 });
 
+const epubTranscriptRequestSchema = z.object({
+  title: z.string().min(1).max(300),
+  language: z.string().min(1),
+  transcript_text: z.string().min(10).max(getServiceLimits().maxTranscriptChars),
+  template_id: z.string().default("templateA-v0-book"),
+  metadata: z.record(z.unknown()).optional(),
+  compliance_declaration: complianceSchema,
+});
+
 function getUser(req: Request): { id: string; email: string } {
   const user = req.authUser;
   if (!user) {
@@ -31,16 +40,20 @@ function getUser(req: Request): { id: string; email: string } {
   return user;
 }
 
-const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
+async function createTranscriptJobResponse(
+  req: Request,
+  res: Response,
+  parsed: z.infer<typeof transcriptRequestSchema> | z.infer<typeof epubTranscriptRequestSchema>,
+  outputFormats: z.infer<typeof outputFormatSchema>,
+) {
   const user = getUser(req);
-  const parsed = transcriptRequestSchema.parse(req.body);
   const job = await createTranscriptJob({
     userId: user.id,
     title: parsed.title,
     language: parsed.language,
     transcriptText: parsed.transcript_text,
     templateId: parsed.template_id,
-    outputFormats: parsed.output_formats,
+    outputFormats,
     metadata: parsed.metadata,
     compliance: parsed.compliance_declaration,
   });
@@ -49,10 +62,20 @@ const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
     status: job.status,
     created_at: job.createdAt,
   });
+}
+
+const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
+  const parsed = transcriptRequestSchema.parse(req.body);
+  await createTranscriptJobResponse(req, res, parsed, parsed.output_formats);
+});
+
+const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
+  const parsed = epubTranscriptRequestSchema.parse(req.body);
+  await createTranscriptJobResponse(req, res, parsed, ["epub"]);
 });
 
 router.post("/jobs/from-transcript", createTranscriptRoute);
-router.post("/epub/from-transcript", createTranscriptRoute);
+router.post("/epub/from-transcript", createEpubFromTranscriptRoute);
 
 router.get(
   "/jobs/:job_id",
