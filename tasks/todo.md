@@ -1,5 +1,21 @@
 # TODO
 
+## Current Task: Add explicit scope guidance in README (2026-03-04)
+
+### Plan
+
+- [x] Add a top-level README section that states project scope and engineering posture.
+- [x] Explicitly call out single-user context, quality-first goal, and anti-overengineering rule.
+
+### Review
+
+- Added `Project Scope (Read First)` section in `README.md` near the top.
+- The section now explicitly anchors future work to:
+  - one-user scope,
+  - high-quality transcript -> EPUB output,
+  - straightforward implementation bias,
+  - no premature complexity.
+
 ## Current Task: Phase 8 no-poll primary path on EPUB alias response (2026-03-04)
 
 ### Plan

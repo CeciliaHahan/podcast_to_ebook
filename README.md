@@ -4,6 +4,14 @@ A Chrome extension + backend that turns podcast transcripts into ebooks.
 
 This project is used by one person, so the architecture should stay simple, explicit, and easy to debug.
 
+## Project Scope (Read First)
+
+- This is a single-user product.
+- The core goal is high-quality transcript -> EPUB output.
+- Prefer straightforward implementations that are easy to reason about.
+- Do not overengineer for scale, workflows, or abstractions we do not need yet.
+- Add complexity only when it clearly improves output quality or fixes repeated real pain.
+
 ## What Exists Today
 
 - Chrome extension side panel submits transcript text.
