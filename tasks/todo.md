@@ -1,5 +1,26 @@
 # TODO
 
+## Current Task: Phase 7 sidepanel skips polling when create already succeeded (2026-03-04)
+
+### Plan
+
+- [x] Update sidepanel submit flow to short-circuit polling on immediate `succeeded` create response.
+- [x] Keep polling as fallback for non-succeeded create responses.
+- [x] Run validation:
+  - sidepanel syntax check,
+  - alias regression script,
+  - `dev-smoke.sh`.
+
+### Review
+
+- Updated `extension/sidepanel/sidepanel.js`:
+  - if create response status is `succeeded`, sidepanel now fetches status/inspector/artifacts immediately and skips interval polling.
+  - polling remains unchanged for non-succeeded status values.
+- Validation:
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_45031d94a0d4b58f`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with `job_id=job_08061d95616c9112`.
+
 ## Current Task: Phase 6 inline-create response reflects real completion state (2026-03-04)
 
 ### Plan
