@@ -1,116 +1,116 @@
 # Podcasts_to_ebooks Workspace
 
-This workspace contains product specs, backend skeleton code, and extension API integration files.
+A Chrome extension + backend that turns podcast transcripts into ebooks.
 
-## Structure
+This project is used by one person, so the architecture should stay simple, explicit, and easy to debug.
 
-- `docs/`: approved V1 specs and contracts
-- `assets/templates/`: initial EPUB template baseline asset
-- `backend/`: TypeScript API skeleton + migration
-- `extension/src/api/`: typed API client for side panel integration
+## What Exists Today
 
-## Backend Quick Start
+- Chrome extension side panel submits transcript text.
+- Express backend runs generation inline (same request lifecycle, no worker queue).
+- PostgreSQL stores job metadata and artifact records.
+- Artifacts are written to local disk (`.dev-artifacts/`) and exposed via download URLs.
 
-1. Copy env:
+## Quick Start
+
 ```bash
 cd backend
 cp .env.example .env
-```
-2. Install deps:
-```bash
 npm install
-```
-3. Apply migration:
-```bash
 psql "$DATABASE_URL" -f migrations/0001_init.sql
-```
-4. Run dev server:
-```bash
 npm run dev
 ```
 
-## One-Command Dev Scripts
-
-From repo root:
+Or from repo root:
 
 ```bash
 ./scripts/dev-up.sh
 ```
 
-- Starts PostgreSQL service
-- Ensures DB exists
-- Applies migration
-- Installs backend deps
-- Starts backend on `:8080` if not already running
+## API Surface (Current)
 
-Smoke test:
+| Method | Path | Status |
+| --- | --- | --- |
+| `POST` | `/v1/jobs/from-transcript` | Primary path used by extension |
+| `GET` | `/v1/jobs/{id}` | Used for status polling |
+| `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
+| `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
+| `POST` | `/v1/jobs/from-rss` | Legacy / not used by extension |
+| `POST` | `/v1/jobs/from-link` | Legacy / not used by extension |
+| `POST` | `/v1/jobs/from-audio` | Legacy / not used by extension |
+| `POST` | `/v1/rss/parse` | Legacy stub |
 
-```bash
-./scripts/dev-smoke.sh
-```
-
-Stop local services:
-
-```bash
-./scripts/dev-down.sh
-```
-
-## Local Auth Convention (dev)
-
-Use:
+Auth for local dev:
 
 - `Authorization: Bearer dev-token`
-or
 - `Authorization: Bearer dev:you@example.com`
 
-## Implemented V1 Endpoints
-
-- `POST /v1/jobs/from-transcript`
-- `POST /v1/rss/parse`
-- `POST /v1/jobs/from-rss`
-- `POST /v1/jobs/from-audio`
-- `POST /v1/jobs/from-link`
-- `GET /v1/jobs/{job_id}`
-- `GET /v1/jobs/{job_id}/artifacts`
-- `GET /v1/jobs/{job_id}/events`
-
-## Notes
-
-- Current worker is in-process simulation for end-to-end flow testing.
-- Replace simulated artifact URLs and ingestion pipeline with production workers/object storage next.
-
-## Extension MVP
-
-- Manifest + popup + side panel UI are in `extension/`.
-- Load instructions: `extension/README.md`.
-
-## End-to-end generation flow
+## Architecture (Today)
 
 ```mermaid
 flowchart TD
-  A[User submits transcript in side panel] --> B[Backend validate request + defaults]
-  B --> C[Create job + persist metadata]
+  A[Extension side panel] --> B[POST /v1/jobs/from-transcript]
+  B --> C[createJob in Postgres]
   C --> D[runPipelineInline]
   D --> E[buildBookletModel]
-  E --> F[parse + normalize transcript]
-  F --> G[segment + plan chapters]
-  G --> H[build draft model]
-  H --> I[LLM enhancement]
-  I --> J{LLM API call}
-  J -->|success| K[merge llm draft into model]
-  J -->|fallback| L[chapter-level retry/patch]
-  L --> M[merge fallback patch]
-  K --> N[render outputs]
-  M --> N
-  N --> O[write markdown / pdf / epub]
-  O --> P[quality checks: chapter count, metadata consistency, no placeholders]
-  P --> Q[artifact persisted + signed/recorded for download]
-  Q --> R[Frontend poll status + inspector + artifacts]
+  E --> F[optional LLM enrichment]
+  F --> G[render artifacts: epub/pdf/md]
+  G --> H[save artifact metadata]
+  H --> I[job status -> succeeded/failed]
+  I --> J[Extension polls and shows downloads]
 ```
 
-### How template and prompts are used
+Important: there is no background queue right now. The pipeline runs inline in the backend process.
 
-- The runtime template id is currently kept as a stable default (`templateA-v0-book`) and acts as a canonical structure contract.
-- System prompts are applied in `bookletLlm` when optional LLM enhancement is enabled.
-- LLM is invoked at the draft/patch step in the pipeline (see `generateBookletDraftWithLlm` and `generateChapterPatchWithLlm`).
-- Final output rendering still uses the same `BookletModel` across epub/pdf/md to keep section order and metadata aligned.
+## Target Simplification (Planned)
+
+```mermaid
+flowchart TD
+  A[Extension side panel] --> B[POST /v1/epub/from-transcript]
+  B --> C[validate + normalize transcript]
+  C --> D[segment chapters]
+  D --> E[optional LLM rewrite]
+  E --> F[build canonical BookModel]
+  F --> G[render EPUB]
+  G --> H[return file response]
+```
+
+Optional lightweight record (only if needed later): save one `run` row for audit/debug, but no queue semantics.
+
+## Transcript -> EPUB Pipeline (Core Logic)
+
+```mermaid
+flowchart LR
+  A[Raw transcript] --> B[Parse speaker/timestamp/text]
+  B --> C[Clean noise and normalize text]
+  C --> D[Detect topic boundaries]
+  D --> E[Create chapter plan]
+  E --> F[Assemble base BookModel]
+  F --> G[Optional LLM enhancement]
+  G --> H[Quality checks for EPUB validity]
+  H --> I[Render EPUB package]
+```
+
+## Failure Policy
+
+- Do not hide failures with silent fallbacks.
+- If LLM mode is enabled and fails, return explicit error details.
+- Keep deterministic (non-LLM) mode explicit, not implicit.
+
+## Repo Map
+
+```text
+.
+├── backend/
+│   └── src/
+│       ├── routes/          # API handlers
+│       ├── services/        # Job orchestration
+│       ├── repositories/    # DB + generation + rendering (currently mixed)
+│       └── config.ts
+├── extension/
+│   ├── sidepanel/           # Main UI
+│   └── src/api/             # API client
+├── docs/
+├── scripts/
+└── tasks/todo.md
+```

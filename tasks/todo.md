@@ -1,5 +1,28 @@
 # TODO
 
+## Current Task: Rewrite docs/update-readme-flowcharts for single-user simplicity (2026-03-04)
+
+### Plan
+
+- [x] Rewrite README architecture flowcharts from queue/job-heavy framing to a direct transcript-to-EPUB mental model.
+- [x] Rewrite `docs/simplify-backend-plan.md` into a concise, one-user architecture decision doc.
+- [x] Keep recommendations ranked and explicit about tradeoffs (no queue by default, optional minimal run history).
+- [x] Add a short review note summarizing what changed and why.
+
+### Review
+
+- Replaced README flowchart sections with a simpler set:
+  - current architecture (inline pipeline, no background queue),
+  - target simplification path (`POST /v1/epub/from-transcript`),
+  - core transcript -> EPUB processing pipeline.
+- Simplified README language and removed over-detailed branching explanations that made the system look larger than it is.
+- Rewrote `docs/simplify-backend-plan.md` as a direct decision doc focused on:
+  - whether jobs/queues are needed (ranked options),
+  - the canonical transcript -> EPUB stages,
+  - a small phased migration plan,
+  - explicit failure policy (no silent fallback behavior).
+- The rewrite keeps architecture discussion aligned with actual product scope: one-user extension, correctness first, low operational overhead.
+
 ## Current Task: Discussion Template v1 (Roundtable) + Profile-Based Template Routing (2026-03-03)
 
 ### Plan
