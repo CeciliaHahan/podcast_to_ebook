@@ -1,5 +1,36 @@
 # TODO
 
+## Current Task: Phase 2 simplify transcript path + direct epub alias (2026-03-04)
+
+### Plan
+
+- [x] Run baseline regression check before Phase 2 edits.
+- [x] Remove idempotency/request metadata logic from active transcript runtime path.
+- [x] Add `/v1/epub/from-transcript` alias endpoint.
+- [x] Re-run regression checks for both create paths:
+  - `/v1/jobs/from-transcript`
+  - `/v1/epub/from-transcript`
+- [x] Update docs/contracts for the alias endpoint.
+
+### Review
+
+- Baseline regression passed before changes:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_f750cc37bb077bcf`.
+- Removed request metadata/idempotency handling from active transcript path:
+  - deleted `requestMeta()` usage from `backend/src/routes/v1.ts`,
+  - removed `requestIp/userAgent/idempotencyKey` params from `createTranscriptJob`/`createAndRunJob`,
+  - removed idempotency lookup block from `createJob` in `backend/src/repositories/jobsRepo.ts`.
+- Added `POST /v1/epub/from-transcript` alias route that uses the same transcript creation handler.
+- Updated regression script with configurable create path (`CREATE_PATH`) to validate alias behavior.
+- Updated docs/contracts:
+  - `README.md` API table now includes `/v1/epub/from-transcript`.
+  - `docs/openapi.v1.yaml` includes the alias endpoint contract.
+- Validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b4e098b6ba9c7e97`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b2b6c596e17d3486`.
+
 ## Current Task: Phase 1 API simplification (remove dead ingestion routes) (2026-03-04)
 
 ### Plan

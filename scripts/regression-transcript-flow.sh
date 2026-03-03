@@ -4,6 +4,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 AUTH_HEADER="${AUTH_HEADER:-Authorization: Bearer dev:cecilia@example.com}"
 POLL_SECONDS="${POLL_SECONDS:-40}"
+CREATE_PATH="${CREATE_PATH:-/v1/jobs/from-transcript}"
 
 REQUEST_PAYLOAD='{
   "title": "Regression Test Episode",
@@ -34,8 +35,8 @@ assert_json() {
 echo "[1/5] health check"
 curl -sS "$BASE_URL/healthz" >/dev/null
 
-echo "[2/5] create transcript job"
-CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/jobs/from-transcript" \
+echo "[2/5] create transcript job via $CREATE_PATH"
+CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL$CREATE_PATH" \
   -H "$AUTH_HEADER" \
   -H 'Content-Type: application/json' \
   -d "$REQUEST_PAYLOAD")"

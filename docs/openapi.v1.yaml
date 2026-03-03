@@ -39,6 +39,32 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "429":
           $ref: "#/components/responses/ErrorResponse"
+  /v1/epub/from-transcript:
+    post:
+      tags: [Jobs]
+      summary: Simplified transcript entrypoint (alias of /v1/jobs/from-transcript)
+      operationId: createEpubFromTranscript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTranscriptJobRequest"
+      responses:
+        "202":
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
   /v1/jobs/{job_id}:
     get:
       tags: [Jobs]

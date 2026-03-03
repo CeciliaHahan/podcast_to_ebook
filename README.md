@@ -31,7 +31,8 @@ Or from repo root:
 
 | Method | Path | Status |
 | --- | --- | --- |
-| `POST` | `/v1/jobs/from-transcript` | Primary path used by extension |
+| `POST` | `/v1/epub/from-transcript` | Simplified transcript -> epub entrypoint (alias) |
+| `POST` | `/v1/jobs/from-transcript` | Backward-compatible transcript entrypoint |
 | `GET` | `/v1/jobs/{id}` | Used for status polling |
 | `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
 | `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
