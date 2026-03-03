@@ -7,7 +7,7 @@
 - [x] Add a dedicated regression test script for transcript -> artifacts -> inspector flow.
 - [x] Add a short "run before/after each simplification phase" section in `docs/simplify-backend-plan.md`.
 - [x] Run the new regression test once on the current baseline and record result.
-- [ ] Open a new PR for simplification work with test-first framing.
+- [x] Open a new PR for simplification work with test-first framing.
 
 ### Review
 
@@ -21,6 +21,7 @@
 - Baseline run result:
   - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
   - `PASS` with `job_id=job_4e72d71a10acf0e9`.
+- PR opened: `https://github.com/CeciliaHahan/podcast_to_ebook/pull/2`
 
 ## Current Task: Rewrite docs/update-readme-flowcharts for single-user simplicity (2026-03-04)
 
