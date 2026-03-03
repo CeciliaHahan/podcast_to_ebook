@@ -244,7 +244,7 @@ components:
           type: string
         status:
           type: string
-          enum: [queued]
+          enum: [queued, succeeded]
         created_at:
           type: string
           format: date-time

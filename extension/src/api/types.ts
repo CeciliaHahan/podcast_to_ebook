@@ -8,7 +8,7 @@ export type ComplianceDeclaration = {
 
 export type JobAcceptedResponse = {
   job_id: string;
-  status: "queued";
+  status: "queued" | "succeeded";
   created_at: string;
 };
 

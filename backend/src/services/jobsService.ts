@@ -188,6 +188,10 @@ async function createAndRunJob(params: {
       sourceRef: params.sourceRef,
       rawInput: params.rawInput,
     });
+    return {
+      ...job,
+      status: "succeeded" as const,
+    };
   }
 
   return job;
