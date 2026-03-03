@@ -40,6 +40,20 @@ Or from repo root:
 
 Use this when you want a result-first transcript -> EPUB loop with visible stage-by-stage progress.
 
+One command startup (recommended):
+
+```bash
+./run_e2e_debug.sh
+```
+
+This script handles:
+
+- PostgreSQL startup + stale `postmaster.pid` cleanup
+- backend env/migration/build/start
+- dashboard launch (`scripts/observe-transcript-run.mjs`)
+
+Manual dashboard-only start (if backend is already running):
+
 ```bash
 node scripts/observe-transcript-run.mjs
 ```

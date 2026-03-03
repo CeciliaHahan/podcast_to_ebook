@@ -45,6 +45,7 @@ Use this tree to route work quickly.
 .
 ├── AGENTS.md                     # This guide
 ├── README.md                     # Project overview + quick start
+├── run_e2e_debug.sh              # One-command Postgres + backend + observability dashboard startup
 ├── tasks/
 │   ├── method-compare/           # Method comparison outputs and reports
 │   └── transcript-samples/       # Local transcript fixtures for fast E2E iteration
