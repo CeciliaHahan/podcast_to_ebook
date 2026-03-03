@@ -2,14 +2,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-function required(name: string, env: NodeJS.ProcessEnv = process.env): string {
-  const value = env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
-}
-
 const OPENROUTER_DEFAULT_MODEL = "google/gemini-3-flash";
 const OPENAI_DEFAULT_MODEL = "gpt-4.1-mini";
 const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -49,7 +41,8 @@ const llmConfig = resolveLlmConfig(process.env);
 export const config = {
   host: process.env.HOST ?? "0.0.0.0",
   port: Number(process.env.PORT ?? 8080),
-  databaseUrl: required("DATABASE_URL", process.env),
+  databaseUrl: process.env.DATABASE_URL ?? "",
+  databaseEnabled: Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0),
   nodeEnv: process.env.NODE_ENV ?? "development",
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${Number(process.env.PORT ?? 8080)}`,
   ...llmConfig,

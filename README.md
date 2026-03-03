@@ -16,7 +16,8 @@ This project is used by one person, so the architecture should stay simple, expl
 
 - Chrome extension side panel submits transcript text.
 - Express backend runs generation inline (same request lifecycle, no worker queue).
-- PostgreSQL stores job metadata and artifact records.
+- `POST /v1/epub/from-transcript` is now DB-free for core transcript -> EPUB runs.
+- PostgreSQL is only required for `/v1/jobs/*` compatibility/history endpoints.
 - Artifacts are written to local disk (`.dev-artifacts/`) and exposed via download URLs.
 - Primary endpoint (`/v1/epub/from-transcript`) returns artifact + inspector data inline when generation succeeds.
 
@@ -35,6 +36,9 @@ Or from repo root:
 ```bash
 ./scripts/dev-up.sh
 ```
+
+If you only use `POST /v1/epub/from-transcript`, Postgres is optional.
+If you use `/v1/jobs/*` or transcript history APIs, Postgres is required.
 
 ## Live E2E Observability Dashboard
 
@@ -83,8 +87,8 @@ data/transcripts/
 
 | Method | Path | Status |
 | --- | --- | --- |
-| `POST` | `/v1/epub/from-transcript` | Simplified transcript -> epub entrypoint (EPUB-only, no `output_formats` required, inline artifacts/inspector on success) |
-| `POST` | `/v1/jobs/from-transcript` | Backward-compatible transcript entrypoint |
+| `POST` | `/v1/epub/from-transcript` | Primary DB-free transcript -> EPUB entrypoint (EPUB-only, no `output_formats` required, inline artifacts/inspector on success) |
+| `POST` | `/v1/jobs/from-transcript` | Backward-compatible DB-backed transcript entrypoint |
 | `GET` | `/v1/jobs/{id}` | Used for status polling |
 | `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
 | `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
@@ -99,18 +103,17 @@ Auth for local dev:
 ```mermaid
 flowchart TD
   A[Extension side panel] --> B[POST /v1/epub/from-transcript]
-  B --> C[createJob in Postgres]
-  C --> D[runPipelineInline]
-  D --> E[buildBookletModel]
-  E --> F[optional LLM enrichment]
-  F --> G[render artifacts: epub/pdf/md]
-  G --> H[save artifact metadata]
-  H --> I[create response includes artifacts + inspector]
-  I --> J[Extension shows download immediately]
-  I --> K[fallback polling only if inline details missing]
+  B --> C[runPipelineInline]
+  C --> D[buildBookletModel]
+  D --> E[optional LLM enrichment]
+  E --> F[render artifacts: epub/md/pdf]
+  F --> G[write files under .dev-artifacts]
+  G --> H[inline response: artifacts + inspector stages]
+  H --> I[Extension shows download immediately]
 ```
 
 Important: there is no background queue right now. The pipeline runs inline in the backend process.
+`/v1/jobs/*` remains as DB-backed compatibility mode.
 
 ## Target Simplification (Planned)
 

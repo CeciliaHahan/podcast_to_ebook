@@ -1,10 +1,48 @@
 import { Router } from "express";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
+import { config } from "../config.js";
 import { getArtifactForDownload } from "../repositories/jobsRepo.js";
+import type { OutputFormat } from "../types/domain.js";
 
 const router = Router();
+
+function inferTypeFromFileName(fileName: string): OutputFormat | null {
+  if (fileName.endsWith(".epub")) {
+    return "epub";
+  }
+  if (fileName.endsWith(".pdf")) {
+    return "pdf";
+  }
+  if (fileName.endsWith(".md")) {
+    return "md";
+  }
+  return null;
+}
+
+async function resolveArtifactFromFilesystem(jobId: string, fileName: string) {
+  const type = inferTypeFromFileName(fileName);
+  if (!type) {
+    return null;
+  }
+  const storageUri = path.resolve(process.cwd(), ".dev-artifacts", jobId, fileName);
+  try {
+    const stat = await fs.stat(storageUri);
+    if (!stat.isFile()) {
+      return null;
+    }
+    return {
+      fileName,
+      storageUri,
+      expiresAt: null,
+      type,
+    };
+  } catch {
+    return null;
+  }
+}
 
 router.get(
   "/downloads/:job_id/:file_name",
@@ -20,7 +58,10 @@ router.get(
       throw new ApiError(400, "INVALID_INPUT", "Invalid download path.");
     }
 
-    const artifact = await getArtifactForDownload(jobId, fileName);
+    const useFilesystemLookup = !config.databaseEnabled || jobId.startsWith("run_");
+    const artifact = useFilesystemLookup
+      ? await resolveArtifactFromFilesystem(jobId, fileName)
+      : await getArtifactForDownload(jobId, fileName);
     if (!artifact) {
       throw new ApiError(404, "NOT_FOUND", "Artifact not found.");
     }
