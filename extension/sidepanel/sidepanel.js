@@ -436,7 +436,7 @@ async function handleCreateJob(event) {
       },
     };
 
-    const created = await apiRequest("/v1/jobs/from-transcript", "POST", payload);
+    const created = await apiRequest("/v1/epub/from-transcript", "POST", payload);
     renderStatus({ job_id: created.job_id, status: created.status, progress: 0, stage: "queued" });
     elements.artifactsList.innerHTML = "<li>正在等待 EPUB 产物...</li>";
     elements.eventsList.innerHTML = "<li>正在等待调试阶段信息...</li>";

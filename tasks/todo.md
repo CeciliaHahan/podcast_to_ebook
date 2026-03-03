@@ -1,5 +1,39 @@
 # TODO
 
+## Current Task: Phase 3 reliability (provider-compatible LLM defaults) (2026-03-04)
+
+### Plan
+
+- [x] Use latest regression pass as pre-change baseline.
+- [x] Fix default LLM model selection so OpenAI fallback does not inherit Gemini model.
+- [x] Add focused config test coverage for provider/model default resolution.
+- [x] Switch extension submit path to `/v1/epub/from-transcript`.
+- [x] Run validation:
+  - backend typecheck,
+  - backend config tests,
+  - transcript flow regression for both create paths.
+
+### Review
+
+- Baseline from Phase 2 before this change set:
+  - `/v1/jobs/from-transcript` PASS `job_id=job_b4e098b6ba9c7e97`
+  - `/v1/epub/from-transcript` PASS `job_id=job_b2b6c596e17d3486`
+- Updated `backend/src/config.ts`:
+  - added `resolveLlmConfig(env)` with provider-aware default model selection,
+  - OpenRouter defaults to `google/gemini-3-flash`,
+  - OpenAI fallback defaults to `gpt-4.1-mini`,
+  - explicit `OPENROUTER_MODEL` / `OPENAI_MODEL` still take precedence.
+- Added focused config coverage:
+  - `backend/src/config.llmDefaults.test.ts`,
+  - `backend/package.json` script: `npm run test:llm-config`.
+- Switched sidepanel submit endpoint to alias:
+  - `extension/sidepanel/sidepanel.js` now posts to `/v1/epub/from-transcript`.
+- Validation after changes:
+  - `cd backend && npm run typecheck` passed.
+  - `cd backend && npm run test:llm-config` passed (`PASS: 4 config default-model cases`).
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_df74f8a4c0966786`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_6109e417325a6be8`.
+
 ## Current Task: Phase 2 simplify transcript path + direct epub alias (2026-03-04)
 
 ### Plan
