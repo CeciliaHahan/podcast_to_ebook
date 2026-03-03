@@ -1,5 +1,7 @@
 import { ApiClient } from "./client";
 import type {
+  CreateEpubFromTranscriptRequest,
+  CreateEpubFromTranscriptResponse,
   CreateTranscriptJobRequest,
   JobAcceptedResponse,
   JobArtifactsResponse,
@@ -12,6 +14,12 @@ export class JobsApi {
 
   createFromTranscript(payload: CreateTranscriptJobRequest): Promise<JobAcceptedResponse> {
     return this.client.post("/v1/jobs/from-transcript", payload);
+  }
+
+  createEpubFromTranscript(
+    payload: CreateEpubFromTranscriptRequest,
+  ): Promise<CreateEpubFromTranscriptResponse> {
+    return this.client.post("/v1/epub/from-transcript", payload);
   }
 
   getJob(jobId: string): Promise<JobStatusResponse> {

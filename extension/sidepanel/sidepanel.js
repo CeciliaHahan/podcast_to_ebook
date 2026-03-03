@@ -436,13 +436,35 @@ async function handleCreateJob(event) {
     };
 
     const created = await apiRequest("/v1/epub/from-transcript", "POST", payload);
-    renderStatus({ job_id: created.job_id, status: created.status, progress: 0, stage: "queued" });
+    const createSucceeded = created.status === "succeeded";
+    renderStatus({
+      job_id: created.job_id,
+      status: created.status,
+      progress: createSucceeded ? 100 : 0,
+      stage: createSucceeded ? "completed" : "queued",
+    });
     elements.artifactsList.innerHTML = "<li>正在等待 EPUB 产物...</li>";
     elements.eventsList.innerHTML = "<li>正在等待调试阶段信息...</li>";
-    if (created.status === "succeeded") {
+    const hasInlineArtifacts = Array.isArray(created.artifacts) && created.artifacts.length > 0;
+    const hasInlineStages = Array.isArray(created.stages) && created.stages.length > 0;
+    if (hasInlineArtifacts) {
+      renderArtifacts({ artifacts: created.artifacts });
+    }
+    if (hasInlineStages) {
+      renderInspector({ stages: created.stages });
+    }
+    if (createSucceeded && hasInlineArtifacts && hasInlineStages) {
+      await storageSet({ [LAST_JOB_KEY]: created.job_id });
+      return;
+    }
+    if (createSucceeded) {
       await fetchStatus(created.job_id);
-      await fetchInspector(created.job_id);
-      await fetchArtifacts(created.job_id);
+      if (!hasInlineStages) {
+        await fetchInspector(created.job_id);
+      }
+      if (!hasInlineArtifacts) {
+        await fetchArtifacts(created.job_id);
+      }
       await storageSet({ [LAST_JOB_KEY]: created.job_id });
       return;
     }

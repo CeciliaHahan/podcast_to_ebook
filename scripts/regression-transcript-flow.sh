@@ -6,6 +6,7 @@ AUTH_HEADER="${AUTH_HEADER:-Authorization: Bearer dev:cecilia@example.com}"
 POLL_SECONDS="${POLL_SECONDS:-40}"
 CREATE_PATH="${CREATE_PATH:-/v1/jobs/from-transcript}"
 INCLUDE_OUTPUT_FORMATS="${INCLUDE_OUTPUT_FORMATS:-1}"
+EXPECT_INLINE_DETAILS="${EXPECT_INLINE_DETAILS:-0}"
 
 REQUEST_PAYLOAD="$(INCLUDE_OUTPUT_FORMATS="$INCLUDE_OUTPUT_FORMATS" node -e '
 const includeOutputFormats = process.env.INCLUDE_OUTPUT_FORMATS !== "0";
@@ -49,6 +50,14 @@ CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL$CREATE_PATH" \
   -d "$REQUEST_PAYLOAD")"
 JOB_ID="$(json_get "$CREATE_RESPONSE" 'data.job_id')"
 echo "job_id=$JOB_ID"
+
+if [ "$EXPECT_INLINE_DETAILS" = "1" ]; then
+  assert_json "$CREATE_RESPONSE" 'Array.isArray(data.artifacts) && data.artifacts.length >= 1' 'Expected inline artifacts in create response.'
+  assert_json "$CREATE_RESPONSE" 'Array.isArray(data.stages) && data.stages.length >= 1' 'Expected inline stages in create response.'
+  assert_json "$CREATE_RESPONSE" 'data.artifacts.some((item) => item.type === "epub")' 'Expected inline EPUB artifact.'
+  INLINE_DOWNLOAD_URL="$(json_get "$CREATE_RESPONSE" 'data.artifacts[0]?.download_url')"
+  curl -fsS "$INLINE_DOWNLOAD_URL" >/dev/null
+fi
 
 echo "[3/5] poll job status"
 STATUS_RESPONSE=''
