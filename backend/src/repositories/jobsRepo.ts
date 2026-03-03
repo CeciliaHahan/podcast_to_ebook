@@ -3255,6 +3255,43 @@ export async function createArtifacts(params: {
   generationMethod?: GenerationMethod;
   inspector?: (stage: InspectorPushInput) => void;
 }) {
+  await createArtifactsWithMode({
+    ...params,
+    persistToDatabase: true,
+  });
+}
+
+export async function createArtifactsEphemeral(params: {
+  jobId: string;
+  formats: OutputFormat[];
+  title: string;
+  language: string;
+  transcriptText: string;
+  templateId: string;
+  sourceType: SourceType;
+  sourceRef?: string;
+  generationMethod?: GenerationMethod;
+  inspector?: (stage: InspectorPushInput) => void;
+}): Promise<ArtifactRecord[]> {
+  return createArtifactsWithMode({
+    ...params,
+    persistToDatabase: false,
+  });
+}
+
+async function createArtifactsWithMode(params: {
+  jobId: string;
+  formats: OutputFormat[];
+  title: string;
+  language: string;
+  transcriptText: string;
+  templateId: string;
+  sourceType: SourceType;
+  sourceRef?: string;
+  generationMethod?: GenerationMethod;
+  inspector?: (stage: InspectorPushInput) => void;
+  persistToDatabase: boolean;
+}): Promise<ArtifactRecord[]> {
   const booklet = await buildBookletModel({
     jobId: params.jobId,
     title: params.title,
@@ -3267,6 +3304,7 @@ export async function createArtifacts(params: {
     inspector: params.inspector,
   });
 
+  const artifacts: ArtifactRecord[] = [];
   for (const format of params.formats) {
     if (format === "pdf") {
       const resolvedFont = await resolveCjkFontPath();
@@ -3302,31 +3340,41 @@ export async function createArtifacts(params: {
       });
     }
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await db.query(
-      `INSERT INTO artifacts
-         (id, job_id, type, file_name, storage_uri, download_url_last_issued_at, size_bytes, checksum_sha256, expires_at)
-       VALUES
-         ($1, $2, $3, $4, $5, NOW(), $6, $7, $8)
-       ON CONFLICT (job_id, type)
-       DO UPDATE SET
-         file_name = EXCLUDED.file_name,
-         storage_uri = EXCLUDED.storage_uri,
-         download_url_last_issued_at = EXCLUDED.download_url_last_issued_at,
-         size_bytes = EXCLUDED.size_bytes,
-         checksum_sha256 = EXCLUDED.checksum_sha256,
-         expires_at = EXCLUDED.expires_at`,
-      [
-        createId("art"),
-        params.jobId,
-        format,
-        built.fileName,
-        built.filePath,
-        built.sizeBytes,
-        built.checksum,
-        expiresAt,
-      ],
-    );
+    if (params.persistToDatabase) {
+      await db.query(
+        `INSERT INTO artifacts
+           (id, job_id, type, file_name, storage_uri, download_url_last_issued_at, size_bytes, checksum_sha256, expires_at)
+         VALUES
+           ($1, $2, $3, $4, $5, NOW(), $6, $7, $8)
+         ON CONFLICT (job_id, type)
+         DO UPDATE SET
+           file_name = EXCLUDED.file_name,
+           storage_uri = EXCLUDED.storage_uri,
+           download_url_last_issued_at = EXCLUDED.download_url_last_issued_at,
+           size_bytes = EXCLUDED.size_bytes,
+           checksum_sha256 = EXCLUDED.checksum_sha256,
+           expires_at = EXCLUDED.expires_at`,
+        [
+          createId("art"),
+          params.jobId,
+          format,
+          built.fileName,
+          built.filePath,
+          built.sizeBytes,
+          built.checksum,
+          expiresAt,
+        ],
+      );
+    }
+    artifacts.push({
+      type: format,
+      fileName: built.fileName,
+      sizeBytes: built.sizeBytes,
+      downloadUrl: `${config.publicBaseUrl}/downloads/${params.jobId}/${encodeURIComponent(built.fileName)}?token=dev`,
+      expiresAt,
+    });
   }
+  return artifacts;
 }
 
 export async function listArtifacts(jobId: string): Promise<ArtifactRecord[]> {

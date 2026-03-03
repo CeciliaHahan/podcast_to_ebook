@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
+import { config } from "../config.js";
 import {
   getJobById,
   getJobInspectorTrace,
@@ -10,6 +11,7 @@ import {
   listRecentTranscriptSamples,
 } from "../repositories/jobsRepo.js";
 import { createTranscriptJob, getLiveJobInspectorTrace, getServiceLimits } from "../services/jobsService.js";
+import { createEpubFromTranscriptInline } from "../services/epubInlineService.js";
 
 const router = Router();
 
@@ -54,6 +56,12 @@ function getUser(req: Request): { id: string; email: string } {
     throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
   }
   return user;
+}
+
+function requireDatabaseBackedJobs(endpoint: string) {
+  if (!config.databaseEnabled) {
+    throw new ApiError(503, "DB_REQUIRED", `DATABASE_URL is required for ${endpoint}. Use /v1/epub/from-transcript for DB-free inline runs.`);
+  }
 }
 
 async function createTranscriptJobResponse(
@@ -102,13 +110,22 @@ async function createTranscriptJobResponse(
 }
 
 const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
+  requireDatabaseBackedJobs("/v1/jobs/from-transcript");
   const parsed = transcriptRequestSchema.parse(req.body);
   await createTranscriptJobResponse(req, res, parsed, parsed.output_formats, "background");
 });
 
 const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
   const parsed = epubTranscriptRequestSchema.parse(req.body);
-  await createTranscriptJobResponse(req, res, parsed, ["epub"], "inline", true);
+  const response = await createEpubFromTranscriptInline({
+    title: parsed.title,
+    language: parsed.language,
+    transcriptText: parsed.transcript_text,
+    templateId: parsed.template_id,
+    metadata: parsed.metadata,
+    compliance: parsed.compliance_declaration,
+  });
+  res.status(200).json(response);
 });
 
 router.post("/jobs/from-transcript", createTranscriptRoute);
@@ -117,6 +134,7 @@ router.post("/epub/from-transcript", createEpubFromTranscriptRoute);
 router.get(
   "/jobs/:job_id",
   asyncHandler(async (req, res) => {
+    requireDatabaseBackedJobs("/v1/jobs/:job_id");
     const user = getUser(req);
     const job = await getJobById(req.params.job_id, user.id);
     if (!job) {
@@ -142,6 +160,7 @@ router.get(
 router.get(
   "/jobs/:job_id/artifacts",
   asyncHandler(async (req, res) => {
+    requireDatabaseBackedJobs("/v1/jobs/:job_id/artifacts");
     const user = getUser(req);
     const job = await getJobById(req.params.job_id, user.id);
     if (!job) {
@@ -167,6 +186,7 @@ router.get(
 router.get(
   "/jobs/:job_id/inspector",
   asyncHandler(async (req, res) => {
+    requireDatabaseBackedJobs("/v1/jobs/:job_id/inspector");
     const user = getUser(req);
     const job = await getJobById(req.params.job_id, user.id);
     if (!job) {
@@ -185,6 +205,7 @@ router.get(
 router.get(
   "/dev/transcript-samples",
   asyncHandler(async (req, res) => {
+    requireDatabaseBackedJobs("/v1/dev/transcript-samples");
     const user = getUser(req);
     const parsedLimit = Number(req.query.limit ?? 12);
     const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(30, Math.floor(parsedLimit))) : 12;
@@ -205,6 +226,7 @@ router.get(
 router.get(
   "/dev/transcript-samples/:job_id",
   asyncHandler(async (req, res) => {
+    requireDatabaseBackedJobs("/v1/dev/transcript-samples/:job_id");
     const user = getUser(req);
     const sample = await getTranscriptSampleByJobId(req.params.job_id, user.id);
     if (!sample) {
