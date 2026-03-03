@@ -73,6 +73,7 @@ export type InspectorStageRecord = {
 export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;
 export type GenerationMethod = "A" | "B" | "C";
 type TranscriptSourceProfile = "single" | "interview" | "discussion";
+type RenderTemplateProfile = "single-notes-v1" | "interview-notes-v1" | "discussion-roundtable-v1";
 
 const CJK_FONT_CANDIDATES = [
   path.resolve(process.cwd(), "../assets/fonts/NotoSansCJKsc-Regular.otf"),
@@ -357,6 +358,8 @@ type BookletModel = {
     sourceRef: string;
     sourceType: string;
     templateId: string;
+    sourceProfile: TranscriptSourceProfile;
+    renderTemplate: RenderTemplateProfile;
   };
   suitableFor: string[];
   outcomes: string[];
@@ -431,6 +434,11 @@ const PROFILE_RESOLVED_NAME: Record<TranscriptSourceProfile, string> = {
   single: "single",
   interview: "interview",
   discussion: "discussion",
+};
+const PROFILE_RENDER_TEMPLATE: Record<TranscriptSourceProfile, RenderTemplateProfile> = {
+  single: "single-notes-v1",
+  interview: "interview-notes-v1",
+  discussion: "discussion-roundtable-v1",
 };
 const PLACEHOLDER_TOKEN_RE = /\\{[A-Z0-9_]+\\}/g;
 const QUESTION_PATTERN = /(\\?|？|想问|请问|我想问|你觉得|你认为|为什么|怎么|what|how|why|which|could|do you|would you)/i;
@@ -899,6 +907,122 @@ function shorten(input: string, maxLength: number): string {
     return input;
   }
   return `${input.slice(0, maxLength - 1)}…`;
+}
+
+function stripTrailingEllipsis(input: string): string {
+  return input.replace(/(\.\.\.|…)+$/g, "").trim();
+}
+
+function normalizeSummarySentence(input: string): string {
+  const cleaned = stripTrailingEllipsis(
+    cleanLine(input)
+      .replace(/^第\s*\d+\s*章(?:聚焦)?\s*[：:，,\-\s]*/i, "")
+      .replace(/^\d+\s*[.)、]\s*/, "")
+      .replace(/^要点\s*\d+\s*[：:\-]?\s*/i, ""),
+  );
+  if (!cleaned) {
+    return "";
+  }
+  if (/[。！？!?]$/.test(cleaned)) {
+    return cleaned;
+  }
+  return `${cleaned}。`;
+}
+
+function isGreetingLikeTitle(input: string): boolean {
+  const normalized = cleanLine(input).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return /(hello|hi|大家好|欢迎收听|我是|在你听这期|想跟大家说|本期节目|先跟大家说|newsletter|订阅)/i.test(normalized);
+}
+
+function createProfileFallbackTitle(profile: TranscriptSourceProfile, keywords: string[]): string {
+  const picks = keywords.filter((keyword) => keyword.length >= 2).slice(0, 3);
+  if (profile === "discussion" && picks.length) {
+    return `圆桌讨论：${picks.join(" / ")}`;
+  }
+  if (profile === "interview" && picks.length) {
+    return `访谈纪要：${picks.join(" / ")}`;
+  }
+  if (profile === "single" && picks.length) {
+    return `主题笔记：${picks.join(" / ")}`;
+  }
+  if (profile === "discussion") {
+    return "圆桌讨论纪要";
+  }
+  if (profile === "interview") {
+    return "访谈纪要";
+  }
+  return "主题笔记";
+}
+
+function resolveBookletTitle(rawTitle: string, profile: TranscriptSourceProfile, keywords: string[]): string {
+  const cleaned = cleanLine(rawTitle).replace(/[\\*_`~]/g, "").trim();
+  if (!cleaned) {
+    return createProfileFallbackTitle(profile, keywords);
+  }
+  if (cleaned.length > 42) {
+    return createProfileFallbackTitle(profile, keywords);
+  }
+  if (cleaned.length > 20 && isGreetingLikeTitle(cleaned)) {
+    return createProfileFallbackTitle(profile, keywords);
+  }
+  if (/[，。！？?!]/.test(cleaned) && cleaned.length > 28) {
+    return createProfileFallbackTitle(profile, keywords);
+  }
+  return cleaned;
+}
+
+function buildDiscussionSummaryFromBodyChapters(bodyChapters: RenderChapterView[]): string[] {
+  const summaries = uniqueNonEmpty(
+    bodyChapters
+      .map((item) => {
+        const corePoint = item.chapter.points.find((point) => point.length >= 10) ?? item.chapter.points[0] ?? item.chapter.title;
+        return normalizeSummarySentence(`${item.chapter.title}：${corePoint}`);
+      })
+      .filter(Boolean),
+  );
+  return summaries.length ? summaries : ["本期讨论聚焦多条争议轴，需要结合正文逐章阅读。"];
+}
+
+function buildTldrFromChapters(
+  chapters: BookletChapter[],
+  profile: TranscriptSourceProfile,
+  fallbackKeywords: string[],
+): string[] {
+  const direct = uniqueNonEmpty(
+    chapters
+      .map((chapter) => {
+        const corePoint = chapter.points.find((point) => point.length >= 8) ?? chapter.points[0] ?? chapter.title;
+        if (profile === "discussion") {
+          return normalizeSummarySentence(`${chapter.title}：${corePoint}`);
+        }
+        return normalizeSummarySentence(corePoint);
+      })
+      .filter(Boolean),
+  );
+  const fallbackTopic = fallbackKeywords.filter(Boolean).slice(0, 3).join("、") || "本期核心议题";
+  return fillToCount(
+    direct.slice(0, 7),
+    7,
+    (index) => normalizeSummarySentence(`围绕${fallbackTopic}展开的关键判断 ${index + 1}`),
+  );
+}
+
+function normalizeModelTldr(
+  current: string[],
+  chapters: BookletChapter[],
+  profile: TranscriptSourceProfile,
+  fallbackKeywords: string[],
+): string[] {
+  const cleanedCurrent = uniqueNonEmpty(current.map((item) => normalizeSummarySentence(item)).filter(Boolean));
+  const fallback = buildTldrFromChapters(chapters, profile, fallbackKeywords);
+  return fillToCount(
+    cleanedCurrent.slice(0, 7),
+    7,
+    (index) => fallback[index] ?? normalizeSummarySentence(`围绕本期主题的关键判断 ${index + 1}`),
+  );
 }
 
 function fillToCount<T>(values: T[], count: number, fallback: (index: number) => T): T[] {
@@ -2073,16 +2197,13 @@ async function buildBookletModel(params: {
     6,
   );
   const focusKeywords = topicFocusKeywords(topKeywords, 3);
-  const tldr = fillToCount(
-    uniqueNonEmpty(
-      chapters.map((chapter) => {
-        const leadAction = chapter.actions[0]?.replace(/^行动\s*\d+：/, "") ?? "提炼关键实践。";
-        return `第 ${chapter.index} 章聚焦${chapter.title}，建议：${shorten(leadAction, 30)}`;
-      }),
-    ).slice(0, 7),
-    7,
-    (index) => `要点 ${index + 1}：将本期信息整理为可执行的知识清单。`,
+  const renderTemplate = PROFILE_RENDER_TEMPLATE[sourceProfile.sourceProfile];
+  const resolvedTitle = resolveBookletTitle(
+    params.title,
+    sourceProfile.sourceProfile,
+    uniqueNonEmpty([...rankedDeclaredKeywords, ...topKeywords]),
   );
+  const tldr = buildTldrFromChapters(chapters, sourceProfile.sourceProfile, topKeywords);
   const terms = buildTermsFromKeywords(topKeywords, chapters);
 
   const generatedAtIso = new Date().toISOString();
@@ -2097,7 +2218,7 @@ async function buildBookletModel(params: {
   const baseModel: BookletModel = {
     meta: {
       identifier: `urn:booklet:${params.jobId}`,
-      title: params.title,
+      title: resolvedTitle,
       language: params.language,
       dcLanguage: languageToDc(params.language),
       creator: BOOK_CREATOR,
@@ -2106,6 +2227,8 @@ async function buildBookletModel(params: {
       sourceRef: params.sourceRef,
       sourceType: params.sourceType,
       templateId: params.templateId,
+      sourceProfile: sourceProfile.sourceProfile,
+      renderTemplate,
     },
     suitableFor: buildSuitableFor(focusKeywords),
     outcomes: [
@@ -2127,10 +2250,14 @@ async function buildBookletModel(params: {
       { name: "主题二：行动与习惯", quotes: appendixQuotes.slice(2, 4) },
     ],
   };
+  const normalizedBaseModel: BookletModel = {
+    ...baseModel,
+    tldr: normalizeModelTldr(baseModel.tldr, baseModel.chapters, sourceProfile.sourceProfile, topKeywords),
+  };
 
   const method = params.generationMethod ?? "B";
   if (method === "A") {
-    const methodAQualityIssues = countModelQualityIssues(baseModel);
+    const methodAQualityIssues = countModelQualityIssues(normalizedBaseModel);
     const methodAQualityGate = isQualityGatePassed(methodAQualityIssues);
     pushInspectorStage(params.inspector, {
       stage: "normalization",
@@ -2139,9 +2266,9 @@ async function buildBookletModel(params: {
       output: {
         selected_profile: sourceProfile.sourceProfile,
         selected_profile_confidence: sourceProfile.confidence,
-        chapter_count: baseModel.chapters.length,
-        tldr_count: baseModel.tldr.length,
-        terms_count: baseModel.terms.length,
+        chapter_count: normalizedBaseModel.chapters.length,
+        tldr_count: normalizedBaseModel.tldr.length,
+        terms_count: normalizedBaseModel.terms.length,
       },
       config: {
         source_profile: sourceProfile.sourceProfile,
@@ -2163,9 +2290,9 @@ async function buildBookletModel(params: {
         source_profile_confidence: sourceProfile.confidence,
       },
       output: {
-        final_chapters: baseModel.chapters.length,
-        tldr_count: baseModel.tldr.length,
-        terms_count: baseModel.terms.length,
+        final_chapters: normalizedBaseModel.chapters.length,
+        tldr_count: normalizedBaseModel.tldr.length,
+        terms_count: normalizedBaseModel.terms.length,
         quality_issues: methodAQualityIssues,
         quality_passed: methodAQualityGate.passed,
         quality_blocking_issues: methodAQualityGate.blockingIssues,
@@ -2183,10 +2310,10 @@ async function buildBookletModel(params: {
         },
       },
     });
-    return baseModel;
+    return normalizedBaseModel;
   }
 
-  const baselineQualityIssues = countModelQualityIssues(baseModel);
+  const baselineQualityIssues = countModelQualityIssues(normalizedBaseModel);
   const baselineQualityGate = isQualityGatePassed(baselineQualityIssues);
   pushInspectorStage(params.inspector, {
     stage: "normalization",
@@ -2194,7 +2321,7 @@ async function buildBookletModel(params: {
     input: {
       source_profile: sourceProfile.sourceProfile,
       source_profile_confidence: sourceProfile.confidence,
-      chapter_count: baseModel.chapters.length,
+      chapter_count: normalizedBaseModel.chapters.length,
       quality_issue_count: baselineQualityIssues.length,
       quality_warning_count: baselineQualityGate.warningCount,
       quality_passed: baselineQualityGate.passed,
@@ -2224,11 +2351,11 @@ async function buildBookletModel(params: {
     });
   } else {
     llmDraft = await generateBookletDraftWithLlm({
-      title: params.title,
+      title: resolvedTitle,
       language: params.language,
       sourceType: params.sourceType,
       sourceRef: params.sourceRef,
-      chapterRanges: baseModel.chapters.map((chapter) => `${chapter.title}（${chapter.range}）`),
+      chapterRanges: normalizedBaseModel.chapters.map((chapter) => `${chapter.title}（${chapter.range}）`),
       chapterPlans: chapterPlan.map((plan) => {
         const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
         const chapter = chapters[plan.chapterIndex - 1];
@@ -2325,10 +2452,14 @@ async function buildBookletModel(params: {
     });
   }
 
-  let finalModel = mergeBookletWithLlmDraft(baseModel, llmDraft, evidence, chapterEvidenceMap, mergeCaps);
+  let finalModel = mergeBookletWithLlmDraft(normalizedBaseModel, llmDraft, evidence, chapterEvidenceMap, mergeCaps);
   if (!llmDraft && chapterPatches.size) {
     finalModel = mergeBookletWithChapterPatches(finalModel, chapterPatches, mergeCaps);
   }
+  finalModel = {
+    ...finalModel,
+    tldr: normalizeModelTldr(finalModel.tldr, finalModel.chapters, sourceProfile.sourceProfile, topKeywords),
+  };
   const finalQualityIssues = countModelQualityIssues(finalModel);
   const finalQualityGate = isQualityGatePassed(finalQualityIssues);
   pushInspectorStage(params.inspector, {
@@ -2372,7 +2503,83 @@ async function buildBookletModel(params: {
   return finalModel;
 }
 
+type RenderChapterView = {
+  chapter: BookletChapter;
+  displayIndex: number;
+  displaySectionId: string;
+};
+
+function chapterRangeStartSeconds(range: string): number | null {
+  const start = cleanLine(String(range || "").split("-")[0] ?? "");
+  return parseTimestampToSeconds(start);
+}
+
+function isLikelyDiscussionFrontMatterChapter(chapter: BookletChapter): boolean {
+  const textBlob = cleanLine(
+    [chapter.title, ...chapter.points.slice(0, 2), chapter.explanation.background, chapter.explanation.coreConcept].join(" "),
+  );
+  if (/(开场|导语|背景设定|问题设定|讨论框架|争议轴|本期要聊|先说)/.test(textBlob)) {
+    return true;
+  }
+  const startSeconds = chapterRangeStartSeconds(chapter.range);
+  if (typeof startSeconds === "number" && startSeconds <= 45 * 60) {
+    return true;
+  }
+  return false;
+}
+
+function buildRenderChapterViews(model: BookletModel): {
+  isDiscussion: boolean;
+  frontMatterChapters: BookletChapter[];
+  bodyChapters: RenderChapterView[];
+} {
+  const isDiscussion = model.meta.renderTemplate === "discussion-roundtable-v1";
+  if (!isDiscussion) {
+    return {
+      isDiscussion: false,
+      frontMatterChapters: [],
+      bodyChapters: model.chapters.map((chapter) => ({
+        chapter,
+        displayIndex: chapter.index,
+        displaySectionId: chapter.sectionId,
+      })),
+    };
+  }
+  let frontCount = 0;
+  for (let index = 0; index < model.chapters.length - 1; index += 1) {
+    const chapter = model.chapters[index];
+    const remaining = model.chapters.length - (index + 1);
+    if (remaining < 2) {
+      break;
+    }
+    if (!isLikelyDiscussionFrontMatterChapter(chapter)) {
+      break;
+    }
+    frontCount += 1;
+  }
+  const frontMatterChapters = model.chapters.slice(0, frontCount);
+  const bodyChapters = model.chapters.slice(frontCount).map((chapter, index) => ({
+    chapter,
+    displayIndex: index + 1,
+    displaySectionId: `chap_${String(index + 4).padStart(2, "0")}`,
+  }));
+  return { isDiscussion: true, frontMatterChapters, bodyChapters };
+}
+
+function buildJudgmentFrameworkItems(chapter: BookletChapter): string[] {
+  const derived = chapter.actions
+    .map((action) => cleanLine(action.replace(/^行动\s*\d+\s*[：:]/, "")))
+    .filter(Boolean)
+    .map((item) => `判断是否成立：${item}`);
+  const explanationBased = [
+    chapter.explanation.judgmentFramework && `判断边界：${chapter.explanation.judgmentFramework}`,
+    chapter.explanation.commonMisunderstanding && `避免误读：${chapter.explanation.commonMisunderstanding}`,
+  ].filter((item): item is string => Boolean(item));
+  return uniqueNonEmpty([...derived, ...explanationBased]).slice(0, 4);
+}
+
 function buildMarkdownContent(model: BookletModel): string {
+  const layout = buildRenderChapterViews(model);
   const lines: string[] = [
     `# ${model.meta.title}`,
     "",
@@ -2380,70 +2587,131 @@ function buildMarkdownContent(model: BookletModel): string {
     `- Creator: ${model.meta.creator}`,
     `- Generated At: ${model.meta.generatedAtIso}`,
     `- Source Ref: ${model.meta.sourceRef}`,
-    "",
-    "## chap_01 - 读前速览",
-    "",
-    "### 这期适合谁",
-    ...model.suitableFor.map((item) => `- ${item}`),
-    "",
-    "### 你会得到什么（可落地）",
-    ...model.outcomes.map((item) => `- ${item}`),
-    "",
-    "### 一句话结论",
-    `> ${model.oneLineConclusion}`,
-    "",
-    "## chap_02 - 关键要点摘要（TL;DR）",
-    ...model.tldr.map((item, index) => `${index + 1}. ${item}`),
-    "",
-    "## chap_03 - 目录（建议 5–7 章）",
-    ...model.chapters.map((chapter) => `- 第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`),
+    `- Render Template: ${model.meta.renderTemplate}`,
     "",
   ];
 
-  for (const chapter of model.chapters) {
-    lines.push(`## ${chapter.sectionId} - 第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`);
+  if (layout.isDiscussion) {
+    const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
+      chapter,
+      displayIndex: index + 1,
+      displaySectionId: chapter.sectionId,
+    }));
+    const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
+
+    lines.push("## 讨论地图");
     lines.push("");
-    lines.push("### 本章要点");
-    lines.push(...chapter.points.map((point) => `- ${point}`));
+    if (discussionMapItems.length) {
+      discussionMapItems.forEach((item, index) => {
+        lines.push(`### 议题 ${index + 1}：${item.chapter.title}`);
+      });
+    } else {
+      lines.push(`> ${model.oneLineConclusion}`);
+    }
     lines.push("");
-    lines.push("### 关键引用（带时间戳）");
-    lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
+    lines.push("## 结论速览");
+    lines.push(...discussionSummaryLines.map((item, index) => `${index + 1}. ${item}`));
     lines.push("");
-    lines.push("### 解释与延展（落地版）");
-    lines.push(`- 背景：${chapter.explanation.background}`);
-    lines.push(`- 核心概念：${chapter.explanation.coreConcept}`);
-    lines.push(`- 判断标准/框架：${chapter.explanation.judgmentFramework}`);
-    lines.push(`- 常见误解：${chapter.explanation.commonMisunderstanding}`);
+    lines.push("## 正文目录");
+    lines.push(...layout.bodyChapters.map((item) => `- 第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`));
     lines.push("");
-    lines.push("### 可执行行动");
-    lines.push(...chapter.actions.map((action) => `- ${action}`));
+
+    for (const item of layout.bodyChapters) {
+      const chapter = item.chapter;
+      lines.push(`## 第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
+      lines.push("");
+      lines.push("### 本章争议问题");
+      lines.push(`- ${chapter.title}（${chapter.range}）`);
+      lines.push("");
+      lines.push("### 立场对照");
+      lines.push(...chapter.points.map((point) => `- ${point}`));
+      lines.push("");
+      lines.push("### 关键引用（带时间戳）");
+      lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
+      lines.push("");
+      lines.push("### 分歧拆解");
+      lines.push(`- 争议背景：${chapter.explanation.background}`);
+      lines.push(`- 核心分歧：${chapter.explanation.coreConcept}`);
+      lines.push(`- 判断边界：${chapter.explanation.judgmentFramework}`);
+      lines.push(`- 常见误读：${chapter.explanation.commonMisunderstanding}`);
+      lines.push("");
+      lines.push("### 判断框架（读者自检）");
+      lines.push(...buildJudgmentFrameworkItems(chapter).map((itemLine) => `- ${itemLine}`));
+      lines.push("");
+    }
+
+    lines.push("## 共识清单与未决问题");
+    lines.push("");
+    lines.push("### 当前共识");
+    lines.push(...discussionSummaryLines.slice(0, 3).map((item) => `- ${item}`));
+    lines.push("");
+    lines.push("### 仍待讨论");
+    lines.push(...uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6).map((item) => `- ${item}`));
+    lines.push("");
+  } else {
+    lines.push("## 读前速览");
+    lines.push("");
+    lines.push("### 这期适合谁");
+    lines.push(...model.suitableFor.map((item) => `- ${item}`));
+    lines.push("");
+    lines.push("### 一句话结论");
+    lines.push(`> ${model.oneLineConclusion}`);
+    lines.push("");
+    lines.push("## 关键要点摘要（TL;DR）");
+    lines.push(...model.tldr.map((item, index) => `${index + 1}. ${item}`));
+    lines.push("");
+    lines.push("## 目录（建议 5–7 章）");
+    lines.push(...layout.bodyChapters.map((item) => `- 第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`));
+    lines.push("");
+
+    for (const item of layout.bodyChapters) {
+      const chapter = item.chapter;
+      lines.push(`## 第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
+      lines.push("");
+      lines.push("### 本章要点");
+      lines.push(...chapter.points.map((point) => `- ${point}`));
+      lines.push("");
+      lines.push("### 关键引用（带时间戳）");
+      lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
+      lines.push("");
+      lines.push("### 解释与延展（落地版）");
+      lines.push(`- 背景：${chapter.explanation.background}`);
+      lines.push(`- 核心概念：${chapter.explanation.coreConcept}`);
+      lines.push(`- 判断标准/框架：${chapter.explanation.judgmentFramework}`);
+      lines.push(`- 常见误解：${chapter.explanation.commonMisunderstanding}`);
+      lines.push("");
+      lines.push("### 可执行行动");
+      lines.push(...chapter.actions.map((action) => `- ${action}`));
+      lines.push("");
+    }
+
+    lines.push("## 行动清单（汇总版）");
+    lines.push("");
+    lines.push("### 今天就做（≤ 15 分钟）");
+    lines.push(...model.actionNow.map((action) => `- ${action}`));
+    lines.push("");
+    lines.push("### 这周内做（需要安排时间）");
+    lines.push(...model.actionWeek.map((action) => `- ${action}`));
+    lines.push("");
+    lines.push("### 长期习惯（可量化）");
+    lines.push(...model.actionLong.map((action) => `- ${action}`));
     lines.push("");
   }
 
-  lines.push("## chap_11 - 行动清单（汇总版）");
-  lines.push("");
-  lines.push("### 今天就做（≤ 15 分钟）");
-  lines.push(...model.actionNow.map((action) => `- ${action}`));
-  lines.push("");
-  lines.push("### 这周内做（需要安排时间）");
-  lines.push(...model.actionWeek.map((action) => `- ${action}`));
-  lines.push("");
-  lines.push("### 长期习惯（可量化）");
-  lines.push(...model.actionLong.map((action) => `- ${action}`));
-  lines.push("");
-  lines.push("## chap_12 - 概念与术语表（v1）");
+  lines.push("## 概念与术语表（v1）");
   lines.push(...model.terms.map((term) => `- **${term.term}**：${term.definition}`));
   lines.push("");
-  lines.push("## chap_13 - 附录：精选原句（按主题）");
+  lines.push("## 附录：精选原句（按主题）");
   for (const theme of model.appendixThemes) {
     lines.push("");
     lines.push(`### ${theme.name}`);
     lines.push(...theme.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
   }
   lines.push("");
-  lines.push("## chap_14 - 制作信息");
+  lines.push("## 制作信息");
   lines.push(`- 输入：${model.meta.sourceType}`);
   lines.push(`- 结构模板：${model.meta.templateId}`);
+  lines.push(`- 渲染模板：${model.meta.renderTemplate}`);
   lines.push("- 整理规则：保留观点与行动，引用尽量带时间戳，必要口语润色但不改变含义");
   lines.push(`- 生成时间：${model.meta.generatedDate}`);
   lines.push(`- 来源追踪：${model.meta.sourceRef}`);
@@ -2489,68 +2757,137 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       sectionIndex += 1;
       writePdfSectionTitle(doc, heading);
     };
+    const layout = buildRenderChapterViews(model);
 
-    beginSection("chap_01 - 读前速览");
-    doc.fontSize(20).text(model.meta.title);
-    doc.moveDown(0.5);
-    doc.fontSize(10).text(`Language: ${model.meta.language}`);
-    doc.fontSize(10).text(`Generated: ${model.meta.generatedAtIso}`);
-    doc.fontSize(10).text(`Source: ${model.meta.sourceRef}`);
-    doc.moveDown(0.6);
-    doc.fontSize(13).text("这期适合谁");
-    writePdfBulletList(doc, model.suitableFor);
-    doc.fontSize(13).text("你会得到什么（可落地）");
-    writePdfBulletList(doc, model.outcomes);
-    doc.fontSize(13).text("一句话结论");
-    doc.fontSize(11).text(model.oneLineConclusion);
+    if (layout.isDiscussion) {
+      const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
+        chapter,
+        displayIndex: index + 1,
+        displaySectionId: chapter.sectionId,
+      }));
+      const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
 
-    beginSection("chap_02 - 关键要点摘要（TL;DR）");
-    writePdfBulletList(
-      doc,
-      model.tldr.map((item, index) => `${index + 1}. ${item}`),
-    );
+      beginSection("讨论地图");
+      doc.fontSize(20).text(model.meta.title);
+      doc.moveDown(0.5);
+      doc.fontSize(10).text(`Language: ${model.meta.language}`);
+      doc.fontSize(10).text(`Generated: ${model.meta.generatedAtIso}`);
+      doc.fontSize(10).text(`Source: ${model.meta.sourceRef}`);
+      doc.fontSize(10).text(`Template: ${model.meta.renderTemplate}`);
+      doc.moveDown(0.6);
+      if (discussionMapItems.length) {
+        writePdfBulletList(
+          doc,
+          discussionMapItems.map((item, index) => `议题 ${index + 1}：${item.chapter.title}`),
+        );
+      } else {
+        doc.fontSize(11).text(model.oneLineConclusion);
+      }
 
-    beginSection("chap_03 - 目录（建议 5–7 章）");
-    writePdfBulletList(doc, model.chapters.map((chapter) => `第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`));
+      beginSection("结论速览");
+      writePdfBulletList(
+        doc,
+        discussionSummaryLines.map((item, index) => `${index + 1}. ${item}`),
+      );
 
-    for (const chapter of model.chapters) {
-      beginSection(`${chapter.sectionId} - 第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`);
-      doc.fontSize(13).text("本章要点");
-      writePdfBulletList(doc, chapter.points);
-      doc.fontSize(13).text("关键引用（带时间戳）");
-      writePdfQuoteList(doc, chapter.quotes);
-      doc.fontSize(13).text("解释与延展（落地版）");
-      writePdfBulletList(doc, [
-        `背景：${chapter.explanation.background}`,
-        `核心概念：${chapter.explanation.coreConcept}`,
-        `判断标准/框架：${chapter.explanation.judgmentFramework}`,
-        `常见误解：${chapter.explanation.commonMisunderstanding}`,
-      ]);
-      doc.fontSize(13).text("可执行行动");
-      writePdfBulletList(doc, chapter.actions);
+      beginSection("正文目录");
+      writePdfBulletList(
+        doc,
+        layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
+      );
+
+      for (const item of layout.bodyChapters) {
+        const chapter = item.chapter;
+        beginSection(`第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
+        doc.fontSize(13).text("本章争议问题");
+        writePdfBulletList(doc, [`${chapter.title}（${chapter.range}）`]);
+        doc.fontSize(13).text("立场对照");
+        writePdfBulletList(doc, chapter.points);
+        doc.fontSize(13).text("关键引用（带时间戳）");
+        writePdfQuoteList(doc, chapter.quotes);
+        doc.fontSize(13).text("分歧拆解");
+        writePdfBulletList(doc, [
+          `争议背景：${chapter.explanation.background}`,
+          `核心分歧：${chapter.explanation.coreConcept}`,
+          `判断边界：${chapter.explanation.judgmentFramework}`,
+          `常见误读：${chapter.explanation.commonMisunderstanding}`,
+        ]);
+        doc.fontSize(13).text("判断框架（读者自检）");
+        writePdfBulletList(doc, buildJudgmentFrameworkItems(chapter));
+      }
+
+      beginSection("共识清单与未决问题");
+      doc.fontSize(13).text("当前共识");
+      writePdfBulletList(doc, discussionSummaryLines.slice(0, 3));
+      doc.fontSize(13).text("仍待讨论");
+      writePdfBulletList(doc, uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6));
+    } else {
+      beginSection("读前速览");
+      doc.fontSize(20).text(model.meta.title);
+      doc.moveDown(0.5);
+      doc.fontSize(10).text(`Language: ${model.meta.language}`);
+      doc.fontSize(10).text(`Generated: ${model.meta.generatedAtIso}`);
+      doc.fontSize(10).text(`Source: ${model.meta.sourceRef}`);
+      doc.fontSize(10).text(`Template: ${model.meta.renderTemplate}`);
+      doc.moveDown(0.6);
+      doc.fontSize(13).text("这期适合谁");
+      writePdfBulletList(doc, model.suitableFor);
+      doc.fontSize(13).text("一句话结论");
+      doc.fontSize(11).text(model.oneLineConclusion);
+
+      beginSection("关键要点摘要（TL;DR）");
+      writePdfBulletList(
+        doc,
+        model.tldr.map((item, index) => `${index + 1}. ${item}`),
+      );
+
+      beginSection("目录（建议 5–7 章）");
+      writePdfBulletList(
+        doc,
+        layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
+      );
+
+      for (const item of layout.bodyChapters) {
+        const chapter = item.chapter;
+        beginSection(`第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
+        doc.fontSize(13).text("本章要点");
+        writePdfBulletList(doc, chapter.points);
+        doc.fontSize(13).text("关键引用（带时间戳）");
+        writePdfQuoteList(doc, chapter.quotes);
+        doc.fontSize(13).text("解释与延展（落地版）");
+        writePdfBulletList(doc, [
+          `背景：${chapter.explanation.background}`,
+          `核心概念：${chapter.explanation.coreConcept}`,
+          `判断标准/框架：${chapter.explanation.judgmentFramework}`,
+          `常见误解：${chapter.explanation.commonMisunderstanding}`,
+        ]);
+        doc.fontSize(13).text("可执行行动");
+        writePdfBulletList(doc, chapter.actions);
+      }
+
+      beginSection("行动清单（汇总版）");
+      doc.fontSize(13).text("今天就做（≤ 15 分钟）");
+      writePdfBulletList(doc, model.actionNow);
+      doc.fontSize(13).text("这周内做（需要安排时间）");
+      writePdfBulletList(doc, model.actionWeek);
+      doc.fontSize(13).text("长期习惯（可量化）");
+      writePdfBulletList(doc, model.actionLong);
     }
 
-    beginSection("chap_11 - 行动清单（汇总版）");
-    doc.fontSize(13).text("今天就做（≤ 15 分钟）");
-    writePdfBulletList(doc, model.actionNow);
-    doc.fontSize(13).text("这周内做（需要安排时间）");
-    writePdfBulletList(doc, model.actionWeek);
-    doc.fontSize(13).text("长期习惯（可量化）");
-    writePdfBulletList(doc, model.actionLong);
-
-    beginSection("chap_12 - 概念与术语表（v1）");
+    beginSection("概念与术语表（v1）");
     writePdfBulletList(doc, model.terms.map((term) => `${term.term}：${term.definition}`));
 
-    beginSection("chap_13 - 附录：精选原句（按主题）");
+    beginSection("附录：精选原句（按主题）");
     for (const theme of model.appendixThemes) {
       doc.fontSize(13).text(theme.name);
       writePdfQuoteList(doc, theme.quotes);
     }
 
-    beginSection("chap_14 - 制作信息");
+    beginSection("制作信息");
     writePdfBulletList(doc, [
       `输入：${model.meta.sourceType}`,
       `结构模板：${model.meta.templateId}`,
+      `渲染模板：${model.meta.renderTemplate}`,
       "整理规则：保留观点与行动，引用尽量带时间戳，必要口语润色但不改变含义",
       `生成时间：${model.meta.generatedDate}`,
       `来源追踪：${model.meta.sourceRef}`,
@@ -2579,68 +2916,144 @@ function quoteListToHtml(quotes: BookletQuote[]): string {
 
 function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
   const files: EpubChapterFile[] = [];
-  files.push({
-    id: "chap_01",
-    fileName: "chap_01.xhtml",
-    title: "读前速览",
-    bodyHtml: [
-      "<h3>这期适合谁</h3>",
-      listToHtml(model.suitableFor),
-      "<h3>你会得到什么（可落地）</h3>",
-      listToHtml(model.outcomes),
-      "<h3>一句话结论</h3>",
-      `<blockquote>${escapeHtml(model.oneLineConclusion)}</blockquote>`,
-    ].join(""),
-  });
-  files.push({
-    id: "chap_02",
-    fileName: "chap_02.xhtml",
-    title: "关键要点摘要（TL;DR）",
-    bodyHtml: `<ol>${model.tldr.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`,
-  });
-  files.push({
-    id: "chap_03",
-    fileName: "chap_03.xhtml",
-    title: "目录（建议 5-7 章）",
-    bodyHtml: listToHtml(model.chapters.map((chapter) => `第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`)),
-  });
+  const layout = buildRenderChapterViews(model);
 
-  for (const chapter of model.chapters) {
+  if (layout.isDiscussion) {
+    const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
+      chapter,
+      displayIndex: index + 1,
+      displaySectionId: chapter.sectionId,
+    }));
+    const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
+
     files.push({
-      id: chapter.sectionId,
-      fileName: `${chapter.sectionId}.xhtml`,
-      title: `第 ${chapter.index} 章：${chapter.title}（${chapter.range}）`,
+      id: "chap_01",
+      fileName: "chap_01.xhtml",
+      title: "讨论地图",
+      bodyHtml: discussionMapItems.length
+        ? discussionMapItems
+            .map((item, index) => `<h3>议题 ${index + 1}：${escapeHtml(item.chapter.title)}</h3>`)
+            .join("")
+        : `<blockquote>${escapeHtml(model.oneLineConclusion)}</blockquote>`,
+    });
+    files.push({
+      id: "chap_02",
+      fileName: "chap_02.xhtml",
+      title: "结论速览",
+      bodyHtml: `<ol>${discussionSummaryLines.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`,
+    });
+    files.push({
+      id: "chap_03",
+      fileName: "chap_03.xhtml",
+      title: "正文目录",
+      bodyHtml: listToHtml(
+        layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
+      ),
+    });
+
+    for (const item of layout.bodyChapters) {
+      const chapter = item.chapter;
+      files.push({
+        id: item.displaySectionId,
+        fileName: `${item.displaySectionId}.xhtml`,
+        title: `第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`,
+        bodyHtml: [
+          "<h3>本章争议问题</h3>",
+          listToHtml([`${chapter.title}（${chapter.range}）`]),
+          "<h3>立场对照</h3>",
+          listToHtml(chapter.points),
+          "<h3>关键引用（带时间戳）</h3>",
+          quoteListToHtml(chapter.quotes),
+          "<h3>分歧拆解</h3>",
+          listToHtml([
+            `争议背景：${chapter.explanation.background}`,
+            `核心分歧：${chapter.explanation.coreConcept}`,
+            `判断边界：${chapter.explanation.judgmentFramework}`,
+            `常见误读：${chapter.explanation.commonMisunderstanding}`,
+          ]),
+          "<h3>判断框架（读者自检）</h3>",
+          listToHtml(buildJudgmentFrameworkItems(chapter)),
+        ].join(""),
+      });
+    }
+
+    files.push({
+      id: "chap_11",
+      fileName: "chap_11.xhtml",
+      title: "共识清单与未决问题",
       bodyHtml: [
-        "<h3>本章要点</h3>",
-        listToHtml(chapter.points),
-        "<h3>关键引用（带时间戳）</h3>",
-        quoteListToHtml(chapter.quotes),
-        "<h3>解释与延展（落地版）</h3>",
-        listToHtml([
-          `背景：${chapter.explanation.background}`,
-          `核心概念：${chapter.explanation.coreConcept}`,
-          `判断标准/框架：${chapter.explanation.judgmentFramework}`,
-          `常见误解：${chapter.explanation.commonMisunderstanding}`,
-        ]),
-        "<h3>可执行行动</h3>",
-        listToHtml(chapter.actions),
+        "<h3>当前共识</h3>",
+        listToHtml(discussionSummaryLines.slice(0, 3)),
+        "<h3>仍待讨论</h3>",
+        listToHtml(uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6)),
+      ].join(""),
+    });
+  } else {
+    files.push({
+      id: "chap_01",
+      fileName: "chap_01.xhtml",
+      title: "读前速览",
+      bodyHtml: [
+        "<h3>这期适合谁</h3>",
+        listToHtml(model.suitableFor),
+        "<h3>一句话结论</h3>",
+        `<blockquote>${escapeHtml(model.oneLineConclusion)}</blockquote>`,
+      ].join(""),
+    });
+    files.push({
+      id: "chap_02",
+      fileName: "chap_02.xhtml",
+      title: "关键要点摘要（TL;DR）",
+      bodyHtml: `<ol>${model.tldr.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`,
+    });
+    files.push({
+      id: "chap_03",
+      fileName: "chap_03.xhtml",
+      title: "目录（建议 5-7 章）",
+      bodyHtml: listToHtml(
+        layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
+      ),
+    });
+
+    for (const item of layout.bodyChapters) {
+      const chapter = item.chapter;
+      files.push({
+        id: item.displaySectionId,
+        fileName: `${item.displaySectionId}.xhtml`,
+        title: `第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`,
+        bodyHtml: [
+          "<h3>本章要点</h3>",
+          listToHtml(chapter.points),
+          "<h3>关键引用（带时间戳）</h3>",
+          quoteListToHtml(chapter.quotes),
+          "<h3>解释与延展（落地版）</h3>",
+          listToHtml([
+            `背景：${chapter.explanation.background}`,
+            `核心概念：${chapter.explanation.coreConcept}`,
+            `判断标准/框架：${chapter.explanation.judgmentFramework}`,
+            `常见误解：${chapter.explanation.commonMisunderstanding}`,
+          ]),
+          "<h3>可执行行动</h3>",
+          listToHtml(chapter.actions),
+        ].join(""),
+      });
+    }
+
+    files.push({
+      id: "chap_11",
+      fileName: "chap_11.xhtml",
+      title: "行动清单（汇总版）",
+      bodyHtml: [
+        "<h3>今天就做（≤ 15 分钟）</h3>",
+        listToHtml(model.actionNow),
+        "<h3>这周内做（需要安排时间）</h3>",
+        listToHtml(model.actionWeek),
+        "<h3>长期习惯（可量化）</h3>",
+        listToHtml(model.actionLong),
       ].join(""),
     });
   }
 
-  files.push({
-    id: "chap_11",
-    fileName: "chap_11.xhtml",
-    title: "行动清单（汇总版）",
-    bodyHtml: [
-      "<h3>今天就做（≤ 15 分钟）</h3>",
-      listToHtml(model.actionNow),
-      "<h3>这周内做（需要安排时间）</h3>",
-      listToHtml(model.actionWeek),
-      "<h3>长期习惯（可量化）</h3>",
-      listToHtml(model.actionLong),
-    ].join(""),
-  });
   files.push({
     id: "chap_12",
     fileName: "chap_12.xhtml",
@@ -2662,6 +3075,7 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
     bodyHtml: listToHtml([
       `输入：${model.meta.sourceType}`,
       `结构模板：${model.meta.templateId}`,
+      `渲染模板：${model.meta.renderTemplate}`,
       "整理规则：保留观点与行动，引用尽量带时间戳，必要口语润色但不改变含义",
       `生成时间：${model.meta.generatedDate}`,
       `来源追踪：${model.meta.sourceRef}`,
@@ -2681,7 +3095,7 @@ function buildEpubChapterXhtml(chapter: EpubChapterFile, model: BookletModel): s
   </head>
   <body>
     <section>
-      <h2>${escapeHtml(chapter.id)} - ${escapeHtml(chapter.title)}</h2>
+      <h2>${escapeHtml(chapter.title)}</h2>
       ${chapter.bodyHtml}
     </section>
   </body>

@@ -1,5 +1,57 @@
 # TODO
 
+## Current Task: Discussion Template v1 (Roundtable) + Profile-Based Template Routing (2026-03-03)
+
+### Plan
+
+- [x] Add profile-based render template routing (`single` / `interview` / `discussion`) and persist chosen render profile in booklet metadata.
+- [x] Implement `discussion` render layout:
+  - use first 3 generated chapters as front big-title pages;
+  - start body chapter numbering from former chapter 4;
+  - replace chapter section labels with roundtable framing (`本章争议问题 / 立场对照 / 关键引用 / 分歧拆解 / 判断框架`).
+- [x] Improve summary/title quality:
+  - remove `你会得到什么（可落地）` section from rendered outputs;
+  - TL;DR lines must avoid `第x章` prefixes and ellipsis fallback style;
+  - improve auto title quality for greeting-heavy transcript openings.
+- [x] Keep non-discussion templates backward compatible (render behavior stable for now).
+- [x] Run backend typecheck and one smoke validation.
+- [x] Follow-up (per latest feedback):
+  - align `讨论地图 / 结论速览 / 正文目录` from the same body chapter set (no fixed count cap in render list);
+  - remove visible `chap_xx` prefixes from output section headings (keep internal epub ids only);
+  - harden title fallback to avoid greeting/newsletter-like long sentence titles.
+
+### Review
+
+- Backend template routing now maps transcript profile to render template variants:
+  - `single -> single-notes-v1`
+  - `interview -> interview-notes-v1`
+  - `discussion -> discussion-roundtable-v1`
+- Added `sourceProfile` and `renderTemplate` to booklet metadata and surface in rendered artifact metadata sections.
+- Implemented discussion-only layout transform in MD/PDF/EPUB:
+  - front big-title pages are derived from earliest generated discussion chapters;
+  - body chapter numbering restarts from the remaining chapters (former later chapters become Chapter 1+);
+  - per-chapter framing switched to `本章争议问题 / 立场对照 / 关键引用 / 分歧拆解 / 判断框架（读者自检）`.
+- Removed rendered `你会得到什么（可落地）` section from current templates.
+- TL;DR generation/normalization now removes `第x章` prefixing and trailing ellipsis-style endings, and enforces full-sentence summaries.
+- Title quality hardening:
+  - backend now detects greeting-style transcript openings and falls back to profile+keyword title generation;
+  - sidepanel auto-title now skips greeting preamble lines and can fallback to keyword-based title.
+- Validation:
+  - `cd backend && npm run typecheck` passed.
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `./scripts/dev-smoke.sh` passed (`job_14f78b6ebb2945fc`).
+  - discussion sample regression passed (`job_4972125a3dff4085`), and generated Markdown confirms:
+    - title fixed from greeting line to keyword-driven title;
+    - `discussion-roundtable-v1` layout active;
+    - TL;DR no chapter-prefix style;
+    - chapter structure switched to roundtable framing.
+- Follow-up validation:
+  - discussion sample rerun (`job_46a9c98d15e46532`) confirms:
+    - EPUB `dc:title` switched to compact keyword title (`圆桌讨论：技术乐观主义 / 流行文化 / 自由主义`);
+    - no visible `chap_01/02/03` style headings in chapter content;
+    - map/summary/toc counts are aligned from same body chapter set (`2/2/2` in this sample).
+  - smoke rerun still passed (`job_1b046995802fbacc`).
+
 ## Current Task: Stabilize 3-Method Compare Runner (C Retry + Degraded Label) (2026-03-02)
 
 ### Plan

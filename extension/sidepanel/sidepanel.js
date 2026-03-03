@@ -43,6 +43,26 @@ function sanitizeGeneratedTitle(rawTitle) {
     .trim();
 }
 
+function isLikelyGreetingPreamble(line) {
+  return /(hello|hi|大家好|欢迎收听|我是|在你听这期|想跟大家说|先跟大家说)/i.test(String(line || ""));
+}
+
+function extractKeywordBasedTitle(transcript) {
+  const text = String(transcript || "");
+  const match = text.match(/keywords\s*:\s*([\s\S]*?)\btranscript\s*:/i);
+  if (!match || !match[1]) {
+    return "";
+  }
+  const parts = match[1]
+    .split(/[\n、，,]/)
+    .map((item) => sanitizeGeneratedTitle(item))
+    .filter((item) => item.length >= 2);
+  if (!parts.length) {
+    return "";
+  }
+  return `圆桌讨论：${parts.slice(0, 3).join(" / ")}`.slice(0, 60);
+}
+
 function autoGenerateTitle(transcript) {
   const body = String(transcript || "").replace(/^.*?transcript\s*:/is, "");
   const lines = body
@@ -65,9 +85,17 @@ function autoGenerateTitle(transcript) {
       .replace(/^(speaker\s*\d+|host|guest|主持人|嘉宾)\s*[0-9:：\s-]*[:：-]?\s*/i, "")
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, "")
       .trim();
+    if (cleaned.length >= 6 && isLikelyGreetingPreamble(cleaned) && cleaned.length > 20) {
+      continue;
+    }
     if (cleaned.length >= 6) {
       return cleaned.slice(0, 60);
     }
+  }
+
+  const keywordTitle = extractKeywordBasedTitle(transcript);
+  if (keywordTitle) {
+    return keywordTitle;
   }
 
   const dateStr = new Date().toISOString().slice(0, 10);
