@@ -62,8 +62,15 @@ What you get:
 
 - sample picker (local samples + recent transcript runs)
 - one-click E2E run (`/v1/jobs/from-transcript`)
+- two frontend modes:
+  - `Version A Storyboard`: narrative flow + stage cards
+  - `Version B Research Grid`: spreadsheet-style ledger and stage table
 - live stage timeline (`transcript`, `normalization`, `llm_request`, `llm_response`, etc.)
 - final EPUB + Markdown result panel
+- shareable debug state in URL query:
+  - `view=story|table`
+  - `method=A|B|C`
+  - `sample=<sample_id>`
 
 Local sample files live in:
 
