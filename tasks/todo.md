@@ -1,5 +1,27 @@
 # TODO
 
+## Current Task: Simplification PR bootstrap with before/after regression test (2026-03-04)
+
+### Plan
+
+- [x] Add a dedicated regression test script for transcript -> artifacts -> inspector flow.
+- [x] Add a short "run before/after each simplification phase" section in `docs/simplify-backend-plan.md`.
+- [x] Run the new regression test once on the current baseline and record result.
+- [ ] Open a new PR for simplification work with test-first framing.
+
+### Review
+
+- Added executable regression script: `scripts/regression-transcript-flow.sh`.
+- Script validates core invariants end-to-end:
+  - create transcript job,
+  - poll success state,
+  - verify artifacts include epub and download URL works,
+  - verify inspector stages contain `transcript` + `normalization`.
+- Updated `docs/simplify-backend-plan.md` with required before/after test gate for every simplification phase.
+- Baseline run result:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_4e72d71a10acf0e9`.
+
 ## Current Task: Rewrite docs/update-readme-flowcharts for single-user simplicity (2026-03-04)
 
 ### Plan
