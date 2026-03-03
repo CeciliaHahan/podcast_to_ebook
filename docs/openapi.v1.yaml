@@ -12,7 +12,6 @@ security:
   - bearerAuth: []
 tags:
   - name: Jobs
-  - name: RSS
 paths:
   /v1/jobs/from-transcript:
     post:
@@ -25,110 +24,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateTranscriptJobRequest"
-      responses:
-        "202":
-          description: Job accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
-        "400":
-          $ref: "#/components/responses/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "403":
-          $ref: "#/components/responses/ErrorResponse"
-        "429":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/rss/parse:
-    post:
-      tags: [RSS]
-      summary: Parse RSS feed and return podcast + episode options
-      operationId: parseRss
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ParseRssRequest"
-      responses:
-        "200":
-          description: RSS parsed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ParseRssResponse"
-        "400":
-          $ref: "#/components/responses/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "429":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/from-rss:
-    post:
-      tags: [Jobs]
-      summary: Create job from selected RSS episode
-      operationId: createJobFromRss
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateRssJobRequest"
-      responses:
-        "202":
-          description: Job accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
-        "400":
-          $ref: "#/components/responses/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "403":
-          $ref: "#/components/responses/ErrorResponse"
-        "429":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/from-audio:
-    post:
-      tags: [Jobs]
-      summary: Create job by uploading audio file
-      operationId: createJobFromAudio
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/CreateAudioJobRequest"
-      responses:
-        "202":
-          description: Job accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
-        "400":
-          $ref: "#/components/responses/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "403":
-          $ref: "#/components/responses/ErrorResponse"
-        "413":
-          $ref: "#/components/responses/ErrorResponse"
-        "429":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/from-link:
-    post:
-      tags: [Jobs]
-      summary: Create job from platform episode URL
-      operationId: createJobFromLink
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateLinkJobRequest"
       responses:
         "202":
           description: Job accepted
@@ -182,20 +77,20 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "409":
           $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/{job_id}/events:
+  /v1/jobs/{job_id}/inspector:
     get:
       tags: [Jobs]
-      summary: Get job event timeline
-      operationId: listJobEvents
+      summary: Get stage-by-stage inspector trace for a job
+      operationId: getJobInspector
       parameters:
         - $ref: "#/components/parameters/JobId"
       responses:
         "200":
-          description: Job events
+          description: Inspector stage records
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobEventsResponse"
+                $ref: "#/components/schemas/JobInspectorResponse"
         "401":
           $ref: "#/components/responses/ErrorResponse"
         "404":
@@ -284,139 +179,6 @@ components:
           $ref: "#/components/schemas/CommonMetadata"
         compliance_declaration:
           $ref: "#/components/schemas/ComplianceDeclaration"
-    CreateRssJobRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - rss_url
-        - episode_id
-        - output_formats
-        - compliance_declaration
-      properties:
-        rss_url:
-          type: string
-          format: uri
-        episode_id:
-          type: string
-        template_id:
-          type: string
-          default: templateA-v0-book
-        output_formats:
-          type: array
-          minItems: 1
-          uniqueItems: true
-          items:
-            $ref: "#/components/schemas/OutputFormat"
-        compliance_declaration:
-          $ref: "#/components/schemas/ComplianceDeclaration"
-    CreateAudioJobRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - file
-        - output_formats
-        - compliance_declaration
-      properties:
-        file:
-          type: string
-          format: binary
-          description: Supported file types in V1 are mp3/m4a/wav, max file size 300MB, max duration 180 minutes.
-        title:
-          type: string
-          minLength: 1
-          maxLength: 300
-        language:
-          type: string
-          example: zh-CN
-        template_id:
-          type: string
-          default: templateA-v0-book
-        output_formats:
-          description: Array serialized by client (JSON string or repeated fields).
-          oneOf:
-            - type: array
-              items:
-                $ref: "#/components/schemas/OutputFormat"
-            - type: string
-        compliance_declaration:
-          oneOf:
-            - $ref: "#/components/schemas/ComplianceDeclaration"
-            - type: string
-              description: JSON-encoded compliance declaration.
-    CreateLinkJobRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - episode_url
-        - output_formats
-        - compliance_declaration
-      properties:
-        episode_url:
-          type: string
-          format: uri
-        template_id:
-          type: string
-          default: templateA-v0-book
-        output_formats:
-          type: array
-          minItems: 1
-          uniqueItems: true
-          items:
-            $ref: "#/components/schemas/OutputFormat"
-        compliance_declaration:
-          $ref: "#/components/schemas/ComplianceDeclaration"
-    ParseRssRequest:
-      type: object
-      additionalProperties: false
-      required: [rss_url]
-      properties:
-        rss_url:
-          type: string
-          format: uri
-    PodcastInfo:
-      type: object
-      additionalProperties: false
-      required: [title]
-      properties:
-        title:
-          type: string
-        author:
-          type: string
-        language:
-          type: string
-    RssEpisode:
-      type: object
-      additionalProperties: false
-      required:
-        - episode_id
-        - title
-      properties:
-        episode_id:
-          type: string
-        title:
-          type: string
-        published_at:
-          type: string
-          format: date-time
-        audio_url:
-          type: string
-          format: uri
-        link:
-          type: string
-          format: uri
-    ParseRssResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - podcast
-        - episodes
-      properties:
-        podcast:
-          $ref: "#/components/schemas/PodcastInfo"
-        episodes:
-          type: array
-          items:
-            $ref: "#/components/schemas/RssEpisode"
     JobAcceptedResponse:
       type: object
       additionalProperties: false
@@ -447,15 +209,8 @@ components:
             - UNAUTHORIZED
             - FORBIDDEN
             - RATE_LIMITED
-            - SOURCE_FETCH_FAILED
-            - AUDIO_UNSUPPORTED_CODEC
-            - TRANSCRIPTION_FAILED
             - GENERATION_FAILED
             - ARTIFACT_EXPIRED
-            - AUDIO_TOO_LARGE
-            - AUDIO_TOO_LONG
-            - ACTIVE_JOB_LIMIT_EXCEEDED
-            - DAILY_QUOTA_EXCEEDED
             - NOT_FOUND
             - JOB_NOT_READY
         message:
@@ -477,7 +232,7 @@ components:
           maximum: 100
         stage:
           type: string
-          example: chapter_structuring
+          example: pipeline
         created_at:
           type: string
           format: date-time
@@ -545,34 +300,42 @@ components:
             $ref: "#/components/schemas/ArtifactItem"
         traceability:
           $ref: "#/components/schemas/Traceability"
-    JobEvent:
+    InspectorStage:
       type: object
       additionalProperties: false
       required:
-        - ts
         - stage
-        - message
+        - ts
       properties:
+        stage:
+          type: string
         ts:
           type: string
           format: date-time
-        stage:
+        input:
+          type: object
+          additionalProperties: true
+        output:
+          type: object
+          additionalProperties: true
+        config:
+          type: object
+          additionalProperties: true
+        notes:
           type: string
-        message:
-          type: string
-    JobEventsResponse:
+    JobInspectorResponse:
       type: object
       additionalProperties: false
       required:
         - job_id
-        - events
+        - stages
       properties:
         job_id:
           type: string
-        events:
+        stages:
           type: array
           items:
-            $ref: "#/components/schemas/JobEvent"
+            $ref: "#/components/schemas/InspectorStage"
     ErrorEnvelope:
       type: object
       additionalProperties: false

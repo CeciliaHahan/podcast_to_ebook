@@ -1,5 +1,31 @@
 # TODO
 
+## Current Task: Phase 1 API simplification (remove dead ingestion routes) (2026-03-04)
+
+### Plan
+
+- [x] Run baseline regression check before API deletion.
+- [x] Remove dead v1 routes: `/v1/rss/parse`, `/v1/jobs/from-rss`, `/v1/jobs/from-link`, `/v1/jobs/from-audio`.
+- [x] Remove dead service/repository code paths tied to removed routes.
+- [x] Run typecheck + regression check after deletion.
+- [x] Align docs/contracts (`README`, `docs/openapi.v1.yaml`) to the reduced API surface.
+
+### Review
+
+- Baseline regression passed before deletion:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_e27045f39cc57243`.
+- Deleted dead API handlers and related parsing/multipart logic in `backend/src/routes/v1.ts`.
+- Removed unused job entry points and audio/quota constants from `backend/src/services/jobsService.ts`.
+- Removed unreferenced quota helper queries from `backend/src/repositories/jobsRepo.ts`.
+- Reduced extension API surface in `extension/src/api/jobs.ts` and `extension/src/api/types.ts` to transcript flow only.
+- Updated contract docs to match implementation:
+  - `README.md` API table now lists only active endpoints.
+  - `docs/openapi.v1.yaml` rewritten to current 4-endpoint Jobs contract (`from-transcript`, status, artifacts, inspector).
+- Post-change validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_c9f455677e0e8bcc`.
+
 ## Current Task: Simplification PR bootstrap with before/after regression test (2026-03-04)
 
 ### Plan

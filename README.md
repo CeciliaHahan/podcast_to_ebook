@@ -35,10 +35,6 @@ Or from repo root:
 | `GET` | `/v1/jobs/{id}` | Used for status polling |
 | `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
 | `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
-| `POST` | `/v1/jobs/from-rss` | Legacy / not used by extension |
-| `POST` | `/v1/jobs/from-link` | Legacy / not used by extension |
-| `POST` | `/v1/jobs/from-audio` | Legacy / not used by extension |
-| `POST` | `/v1/rss/parse` | Legacy stub |
 
 Auth for local dev:
 
