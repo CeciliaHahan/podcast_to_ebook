@@ -69,6 +69,7 @@ Local sample files live in:
 
 ```text
 tasks/transcript-samples/
+data/transcripts/
 ```
 
 ## API Surface (Current)

@@ -14,6 +14,7 @@ const DEFAULTS = {
   baseUrl: "http://localhost:8080",
   token: "dev:cecilia@example.com",
   sampleDir: path.resolve(process.cwd(), "tasks/transcript-samples"),
+  dataSampleDir: path.resolve(process.cwd(), "data/transcripts"),
   open: true,
 };
 
@@ -67,6 +68,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--data-sample-dir" && next) {
+      out.dataSampleDir = path.resolve(next);
+      i += 1;
+      continue;
+    }
     if (arg.startsWith("--")) {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -83,6 +89,7 @@ function printUsage() {
     "  --base-url URL      Backend URL (default: http://localhost:8080)",
     "  --token TOKEN       Auth token (default: dev:cecilia@example.com)",
     "  --sample-dir PATH   Local transcript sample directory",
+    "  --data-sample-dir PATH  Transcript sample directory from /data",
     "  --host HOST         Dashboard host (default: 127.0.0.1)",
     "  --port PORT         Dashboard port (default: 4173)",
     "  --no-open           Do not auto-open browser",
@@ -207,9 +214,43 @@ async function loadLocalSamples(sampleDir) {
       char_count: transcriptText.length,
       preview: previewText(transcriptText),
       file_name: fileName,
+      file_path: fullPath,
       notes: manifest?.notes || "",
     });
   }
+  return samples;
+}
+
+async function loadDataSamples(dataSampleDir) {
+  let files = [];
+  try {
+    files = await fs.readdir(dataSampleDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const txtFiles = files
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".txt"))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const samples = [];
+  for (const fileName of txtFiles) {
+    const fullPath = path.join(dataSampleDir, fileName);
+    const transcriptText = await fs.readFile(fullPath, "utf8");
+    samples.push({
+      id: `data:${fileName}`,
+      source: "data",
+      title: fileName.replace(/\.txt$/i, ""),
+      language: "zh-CN",
+      char_count: transcriptText.length,
+      preview: previewText(transcriptText),
+      file_name: fileName,
+      file_path: fullPath,
+      notes: "Loaded from data/transcripts",
+    });
+  }
+
   return samples;
 }
 
@@ -277,11 +318,12 @@ async function resolveSampleTranscript(cfg, sampleId) {
   }
 
   const localSamples = await loadLocalSamples(cfg.sampleDir);
-  const hit = localSamples.find((item) => item.id === sampleId);
+  const dataSamples = await loadDataSamples(cfg.dataSampleDir);
+  const hit = [...localSamples, ...dataSamples].find((item) => item.id === sampleId);
   if (!hit) {
     throw new Error(`Unknown sample_id: ${sampleId}`);
   }
-  const transcriptPath = path.join(cfg.sampleDir, hit.file_name);
+  const transcriptPath = hit.file_path;
   const transcriptText = await fs.readFile(transcriptPath, "utf8");
   return {
     sample_id: sampleId,
@@ -423,7 +465,9 @@ function buildHtmlPage() {
       }
 
       function summarizeSample(sample) {
-        const source = sample.source === "history" ? "history" : "local";
+        let source = "local";
+        if (sample.source === "history") source = "history";
+        if (sample.source === "data") source = "data";
         return source + " · " + sample.char_count + " chars" + (sample.created_at ? " · " + sample.created_at : "");
       }
 
@@ -605,15 +649,16 @@ async function main() {
 
       if (req.method === "GET" && url.pathname === "/api/samples") {
         const localSamples = await loadLocalSamples(cfg.sampleDir);
+        const dataSamples = await loadDataSamples(cfg.dataSampleDir);
         const history = await loadHistorySamples(cfg, 15);
         if (Array.isArray(history)) {
           jsonResponse(res, 200, {
-            samples: [...localSamples, ...history],
+            samples: [...dataSamples, ...localSamples, ...history],
           });
           return;
         }
         jsonResponse(res, 200, {
-          samples: localSamples,
+          samples: [...dataSamples, ...localSamples],
           history_error: history.error,
         });
         return;
@@ -739,6 +784,8 @@ async function main() {
   console.log(`Backend: ${cfg.baseUrl}`);
   // eslint-disable-next-line no-console
   console.log(`Sample dir: ${cfg.sampleDir}`);
+  // eslint-disable-next-line no-console
+  console.log(`Data sample dir: ${cfg.dataSampleDir}`);
   if (cfg.open) {
     const opened = await openBrowser(dashboardUrl);
     if (!opened) {
