@@ -1,5 +1,231 @@
 # TODO
 
+## Current Task: Phase 7 sidepanel skips polling when create already succeeded (2026-03-04)
+
+### Plan
+
+- [x] Update sidepanel submit flow to short-circuit polling on immediate `succeeded` create response.
+- [x] Keep polling as fallback for non-succeeded create responses.
+- [x] Run validation:
+  - sidepanel syntax check,
+  - alias regression script,
+  - `dev-smoke.sh`.
+
+### Review
+
+- Updated `extension/sidepanel/sidepanel.js`:
+  - if create response status is `succeeded`, sidepanel now fetches status/inspector/artifacts immediately and skips interval polling.
+  - polling remains unchanged for non-succeeded status values.
+- Validation:
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_45031d94a0d4b58f`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with `job_id=job_08061d95616c9112`.
+
+## Current Task: Phase 6 inline-create response reflects real completion state (2026-03-04)
+
+### Plan
+
+- [x] Remove synthetic `queued` create response for inline pipeline success path.
+- [x] Keep backward compatibility for clients that still poll.
+- [x] Update API contracts/types to allow `status: succeeded` at create time.
+- [x] Run validation:
+  - backend typecheck,
+  - jobs-path regression script,
+  - alias-path regression script (no `output_formats`),
+  - `dev-smoke.sh`.
+
+### Review
+
+- Updated `backend/src/services/jobsService.ts`:
+  - when inline pipeline succeeds, create response now returns `status: "succeeded"` instead of synthetic `queued`.
+- Updated contracts:
+  - `docs/openapi.v1.yaml` `JobAcceptedResponse.status` now allows `queued | succeeded`.
+  - `extension/src/api/types.ts` `JobAcceptedResponse.status` updated to `\"queued\" | \"succeeded\"`.
+- Validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b389d9309bba802c`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_dffa6510256baae9`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with create response status `succeeded` (`job_id=job_1508dc29c547c491`).
+
+## Current Task: Phase 5 EPUB alias becomes EPUB-only request contract (2026-03-04)
+
+### Plan
+
+- [x] Keep `/v1/jobs/from-transcript` backward-compatible.
+- [x] Make `/v1/epub/from-transcript` accept transcript payload without `output_formats`.
+- [x] Update sidepanel submit payload to match EPUB-only contract.
+- [x] Update OpenAPI/README contract docs.
+- [x] Extend regression script to test both payload styles.
+- [x] Run validation:
+  - backend typecheck,
+  - sidepanel syntax check,
+  - legacy jobs-path regression,
+  - alias-path regression with `INCLUDE_OUTPUT_FORMATS=0`.
+
+### Review
+
+- Added dedicated alias request schema in `backend/src/routes/v1.ts`:
+  - `/v1/jobs/from-transcript` still uses `output_formats`,
+  - `/v1/epub/from-transcript` now maps to forced `outputFormats: ["epub"]`.
+- Sidepanel payload simplified in `extension/sidepanel/sidepanel.js`:
+  - removed `output_formats` from submit payload.
+- OpenAPI and README updated:
+  - `docs/openapi.v1.yaml` now defines `CreateEpubFromTranscriptRequest`,
+  - `README.md` clarifies alias endpoint is EPUB-only and does not require `output_formats`.
+- Regression script upgraded:
+  - `scripts/regression-transcript-flow.sh` now supports `INCLUDE_OUTPUT_FORMATS=0|1`.
+- `scripts/dev-smoke.sh` now exercises `/v1/epub/from-transcript` with EPUB-only request payload.
+- Validation results:
+  - `cd backend && npm run typecheck` passed.
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_7d31be4d5d05d57c`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_5d38c3f1e16b7eff`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with `job_id=job_a3e58454014ba75c`.
+
+## Current Task: Phase 4 transcript-only internals in job creation path (2026-03-04)
+
+### Plan
+
+- [x] Run pre-change baseline regression on alias endpoint.
+- [x] Remove remaining generic source-type fields from active create-job runtime path.
+- [x] Persist `source_type` as transcript in `createJob` insert logic.
+- [x] Run validation:
+  - backend typecheck,
+  - transcript flow regression on `/v1/jobs/from-transcript`,
+  - transcript flow regression on `/v1/epub/from-transcript`.
+
+### Review
+
+- Pre-change baseline:
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_e2d1821dce2362b7`.
+- Simplified `CreateJobInput`:
+  - removed `sourceType` and `inputDurationSeconds` from `backend/src/types/domain.ts`.
+- Simplified `createJob` insert in `backend/src/repositories/jobsRepo.ts`:
+  - `source_type` now set to `'transcript'::source_type` in SQL,
+  - removed `input_duration_seconds` handling from active path insert values.
+- Simplified `jobsService` internals:
+  - `runPipelineInline` and `createAndRunJob` no longer accept generic `sourceType` plumbing,
+  - transcript source is explicit in stage metadata and artifact orchestration.
+- Post-change validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_90c5f05876cecf2f`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_f5e39cc22de48d5d`.
+
+## Current Task: Phase 3 reliability (provider-compatible LLM defaults) (2026-03-04)
+
+### Plan
+
+- [x] Use latest regression pass as pre-change baseline.
+- [x] Fix default LLM model selection so OpenAI fallback does not inherit Gemini model.
+- [x] Add focused config test coverage for provider/model default resolution.
+- [x] Switch extension submit path to `/v1/epub/from-transcript`.
+- [x] Run validation:
+  - backend typecheck,
+  - backend config tests,
+  - transcript flow regression for both create paths.
+
+### Review
+
+- Baseline from Phase 2 before this change set:
+  - `/v1/jobs/from-transcript` PASS `job_id=job_b4e098b6ba9c7e97`
+  - `/v1/epub/from-transcript` PASS `job_id=job_b2b6c596e17d3486`
+- Updated `backend/src/config.ts`:
+  - added `resolveLlmConfig(env)` with provider-aware default model selection,
+  - OpenRouter defaults to `google/gemini-3-flash`,
+  - OpenAI fallback defaults to `gpt-4.1-mini`,
+  - explicit `OPENROUTER_MODEL` / `OPENAI_MODEL` still take precedence.
+- Added focused config coverage:
+  - `backend/src/config.llmDefaults.test.ts`,
+  - `backend/package.json` script: `npm run test:llm-config`.
+- Switched sidepanel submit endpoint to alias:
+  - `extension/sidepanel/sidepanel.js` now posts to `/v1/epub/from-transcript`.
+- Validation after changes:
+  - `cd backend && npm run typecheck` passed.
+  - `cd backend && npm run test:llm-config` passed (`PASS: 4 config default-model cases`).
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_df74f8a4c0966786`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_6109e417325a6be8`.
+
+## Current Task: Phase 2 simplify transcript path + direct epub alias (2026-03-04)
+
+### Plan
+
+- [x] Run baseline regression check before Phase 2 edits.
+- [x] Remove idempotency/request metadata logic from active transcript runtime path.
+- [x] Add `/v1/epub/from-transcript` alias endpoint.
+- [x] Re-run regression checks for both create paths:
+  - `/v1/jobs/from-transcript`
+  - `/v1/epub/from-transcript`
+- [x] Update docs/contracts for the alias endpoint.
+
+### Review
+
+- Baseline regression passed before changes:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_f750cc37bb077bcf`.
+- Removed request metadata/idempotency handling from active transcript path:
+  - deleted `requestMeta()` usage from `backend/src/routes/v1.ts`,
+  - removed `requestIp/userAgent/idempotencyKey` params from `createTranscriptJob`/`createAndRunJob`,
+  - removed idempotency lookup block from `createJob` in `backend/src/repositories/jobsRepo.ts`.
+- Added `POST /v1/epub/from-transcript` alias route that uses the same transcript creation handler.
+- Updated regression script with configurable create path (`CREATE_PATH`) to validate alias behavior.
+- Updated docs/contracts:
+  - `README.md` API table now includes `/v1/epub/from-transcript`.
+  - `docs/openapi.v1.yaml` includes the alias endpoint contract.
+- Validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b4e098b6ba9c7e97`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_b2b6c596e17d3486`.
+
+## Current Task: Phase 1 API simplification (remove dead ingestion routes) (2026-03-04)
+
+### Plan
+
+- [x] Run baseline regression check before API deletion.
+- [x] Remove dead v1 routes: `/v1/rss/parse`, `/v1/jobs/from-rss`, `/v1/jobs/from-link`, `/v1/jobs/from-audio`.
+- [x] Remove dead service/repository code paths tied to removed routes.
+- [x] Run typecheck + regression check after deletion.
+- [x] Align docs/contracts (`README`, `docs/openapi.v1.yaml`) to the reduced API surface.
+
+### Review
+
+- Baseline regression passed before deletion:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_e27045f39cc57243`.
+- Deleted dead API handlers and related parsing/multipart logic in `backend/src/routes/v1.ts`.
+- Removed unused job entry points and audio/quota constants from `backend/src/services/jobsService.ts`.
+- Removed unreferenced quota helper queries from `backend/src/repositories/jobsRepo.ts`.
+- Reduced extension API surface in `extension/src/api/jobs.ts` and `extension/src/api/types.ts` to transcript flow only.
+- Updated contract docs to match implementation:
+  - `README.md` API table now lists only active endpoints.
+  - `docs/openapi.v1.yaml` rewritten to current 4-endpoint Jobs contract (`from-transcript`, status, artifacts, inspector).
+- Post-change validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_c9f455677e0e8bcc`.
+
+## Current Task: Simplification PR bootstrap with before/after regression test (2026-03-04)
+
+### Plan
+
+- [x] Add a dedicated regression test script for transcript -> artifacts -> inspector flow.
+- [x] Add a short "run before/after each simplification phase" section in `docs/simplify-backend-plan.md`.
+- [x] Run the new regression test once on the current baseline and record result.
+- [x] Open a new PR for simplification work with test-first framing.
+
+### Review
+
+- Added executable regression script: `scripts/regression-transcript-flow.sh`.
+- Script validates core invariants end-to-end:
+  - create transcript job,
+  - poll success state,
+  - verify artifacts include epub and download URL works,
+  - verify inspector stages contain `transcript` + `normalization`.
+- Updated `docs/simplify-backend-plan.md` with required before/after test gate for every simplification phase.
+- Baseline run result:
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_4e72d71a10acf0e9`.
+- PR opened: `https://github.com/CeciliaHahan/podcast_to_ebook/pull/2`
+
 ## Current Task: Rewrite docs/update-readme-flowcharts for single-user simplicity (2026-03-04)
 
 ### Plan

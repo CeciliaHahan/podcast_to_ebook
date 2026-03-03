@@ -125,6 +125,24 @@ flowchart LR
 - Queue-based retries.
 - Complex feature flags for generation methods.
 
+## Before/After Regression Check (Required Each Phase)
+
+Run this test immediately before and after each simplification phase:
+
+```bash
+BASE_URL=http://localhost:8080 ./scripts/regression-transcript-flow.sh
+```
+
+What it verifies:
+
+1. `POST /v1/jobs/from-transcript` accepts request and returns `job_id`.
+2. `GET /v1/jobs/{id}` eventually reaches `succeeded`.
+3. `GET /v1/jobs/{id}/artifacts` returns at least one artifact and includes `epub`.
+4. First artifact `download_url` is fetchable.
+5. `GET /v1/jobs/{id}/inspector` includes `transcript` and `normalization` stages.
+
+If this regression check fails after any phase, stop and fix the phase before continuing.
+
 ## Success Criteria
 
 1. User can paste transcript and get EPUB in one flow.

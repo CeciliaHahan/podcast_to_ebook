@@ -426,7 +426,6 @@ async function handleCreateJob(event) {
       title: resolvedTitle,
       language: elements.language.value.trim(),
       transcript_text: elements.transcriptText.value,
-      output_formats: ["epub"],
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
       },
@@ -436,10 +435,17 @@ async function handleCreateJob(event) {
       },
     };
 
-    const created = await apiRequest("/v1/jobs/from-transcript", "POST", payload);
+    const created = await apiRequest("/v1/epub/from-transcript", "POST", payload);
     renderStatus({ job_id: created.job_id, status: created.status, progress: 0, stage: "queued" });
     elements.artifactsList.innerHTML = "<li>正在等待 EPUB 产物...</li>";
     elements.eventsList.innerHTML = "<li>正在等待调试阶段信息...</li>";
+    if (created.status === "succeeded") {
+      await fetchStatus(created.job_id);
+      await fetchInspector(created.job_id);
+      await fetchArtifacts(created.job_id);
+      await storageSet({ [LAST_JOB_KEY]: created.job_id });
+      return;
+    }
     await startPolling(created.job_id);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "提交任务失败");

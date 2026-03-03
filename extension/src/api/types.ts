@@ -8,7 +8,7 @@ export type ComplianceDeclaration = {
 
 export type JobAcceptedResponse = {
   job_id: string;
-  status: "queued";
+  status: "queued" | "succeeded";
   created_at: string;
 };
 
@@ -20,40 +20,6 @@ export type CreateTranscriptJobRequest = {
   output_formats: OutputFormat[];
   metadata?: Record<string, unknown>;
   compliance_declaration: ComplianceDeclaration;
-};
-
-export type CreateRssJobRequest = {
-  rss_url: string;
-  episode_id: string;
-  template_id?: string;
-  output_formats: OutputFormat[];
-  compliance_declaration: ComplianceDeclaration;
-};
-
-export type CreateLinkJobRequest = {
-  episode_url: string;
-  template_id?: string;
-  output_formats: OutputFormat[];
-  compliance_declaration: ComplianceDeclaration;
-};
-
-export type ParseRssRequest = {
-  rss_url: string;
-};
-
-export type ParseRssResponse = {
-  podcast: {
-    title: string;
-    author?: string;
-    language?: string;
-  };
-  episodes: Array<{
-    episode_id: string;
-    title: string;
-    published_at?: string;
-    audio_url?: string;
-    link?: string;
-  }>;
 };
 
 export type JobStatusResponse = {

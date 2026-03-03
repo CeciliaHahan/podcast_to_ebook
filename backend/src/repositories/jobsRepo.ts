@@ -93,43 +93,6 @@ function pushInspectorStage(
   collector(stage);
 }
 
-export async function countActiveJobs(userId: string): Promise<number> {
-  const result = await db.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM jobs
-      WHERE user_id = $1 AND status IN ('queued', 'processing')`,
-    [userId],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
-export async function countDailyJobs(userId: string): Promise<number> {
-  const result = await db.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM jobs
-      WHERE user_id = $1
-        AND created_at::date = CURRENT_DATE`,
-    [userId],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
-export async function failStaleActiveJobs(userId: string, staleMinutes: number): Promise<number> {
-  const result = await db.query(
-    `UPDATE jobs
-        SET status = 'failed'::job_status,
-            error_code = 'STALE_ACTIVE_JOB_RECOVERED',
-            error_message = 'Auto-marked failed after stale active timeout.',
-            finished_at = CASE WHEN finished_at IS NULL THEN NOW() ELSE finished_at END,
-            updated_at = NOW()
-      WHERE user_id = $1
-        AND status IN ('queued'::job_status, 'processing'::job_status)
-        AND updated_at < NOW() - ($2::int * INTERVAL '1 minute')`,
-    [userId, staleMinutes],
-  );
-  return result.rowCount ?? 0;
-}
-
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {
@@ -147,37 +110,17 @@ async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promi
 
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string; status: JobStatus; createdAt: string }> {
   return withTransaction(async (client) => {
-    if (input.idempotencyKey) {
-      const existing = await client.query<{ id: string; status: JobStatus; created_at: string }>(
-        `SELECT id, status, created_at
-           FROM jobs
-          WHERE user_id = $1 AND idempotency_key = $2
-          LIMIT 1`,
-        [input.userId, input.idempotencyKey],
-      );
-      const hit = existing.rows[0];
-      if (hit) {
-        return {
-          jobId: hit.id,
-          status: hit.status,
-          createdAt: hit.created_at,
-        };
-      }
-    }
-
     const complianceId = createId("cmp");
     await client.query(
       `INSERT INTO compliance_records
-         (id, user_id, for_personal_or_authorized_use_only, no_commercial_use, acceptance_copy, request_ip, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         (id, user_id, for_personal_or_authorized_use_only, no_commercial_use, acceptance_copy)
+       VALUES ($1, $2, $3, $4, $5)`,
       [
         complianceId,
         input.userId,
         input.compliance.forPersonalOrAuthorizedUseOnly,
         input.compliance.noCommercialUse,
         input.acceptanceCopy,
-        input.requestIp ?? null,
-        input.userAgent ?? null,
       ],
     );
 
@@ -185,24 +128,21 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string;
     const insertJob = await client.query<{ created_at: string }>(
       `INSERT INTO jobs
          (id, user_id, source_type, status, progress, stage, title, language, template_id,
-          output_formats, source_ref, input_char_count, input_duration_seconds, idempotency_key,
+          output_formats, source_ref, input_char_count,
           compliance_record_id)
        VALUES
-         ($1, $2, $3, 'queued', 0, 'queued', $4, $5, $6,
-          $7::jsonb, $8, $9, $10, $11, $12)
+         ($1, $2, 'transcript'::source_type, 'queued', 0, 'queued', $3, $4, $5,
+          $6::jsonb, $7, $8, $9)
        RETURNING created_at`,
       [
         jobId,
         input.userId,
-        input.sourceType,
         input.title ?? null,
         input.language ?? null,
         input.templateId,
         JSON.stringify(input.outputFormats),
         input.sourceRef ?? null,
         input.inputCharCount ?? null,
-        input.inputDurationSeconds ?? null,
-        input.idempotencyKey ?? null,
         complianceId,
       ],
     );
