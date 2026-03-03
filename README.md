@@ -4,12 +4,21 @@ A Chrome extension + backend that turns podcast transcripts into ebooks.
 
 This project is used by one person, so the architecture should stay simple, explicit, and easy to debug.
 
+## Project Scope (Read First)
+
+- This is a single-user product.
+- The core goal is high-quality transcript -> EPUB output.
+- Prefer straightforward implementations that are easy to reason about.
+- Do not overengineer for scale, workflows, or abstractions we do not need yet.
+- Add complexity only when it clearly improves output quality or fixes repeated real pain.
+
 ## What Exists Today
 
 - Chrome extension side panel submits transcript text.
 - Express backend runs generation inline (same request lifecycle, no worker queue).
 - PostgreSQL stores job metadata and artifact records.
 - Artifacts are written to local disk (`.dev-artifacts/`) and exposed via download URLs.
+- Primary endpoint (`/v1/epub/from-transcript`) returns artifact + inspector data inline when generation succeeds.
 
 ## Quick Start
 
@@ -31,7 +40,7 @@ Or from repo root:
 
 | Method | Path | Status |
 | --- | --- | --- |
-| `POST` | `/v1/epub/from-transcript` | Simplified transcript -> epub entrypoint (EPUB-only, no `output_formats` required) |
+| `POST` | `/v1/epub/from-transcript` | Simplified transcript -> epub entrypoint (EPUB-only, no `output_formats` required, inline artifacts/inspector on success) |
 | `POST` | `/v1/jobs/from-transcript` | Backward-compatible transcript entrypoint |
 | `GET` | `/v1/jobs/{id}` | Used for status polling |
 | `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
@@ -46,15 +55,16 @@ Auth for local dev:
 
 ```mermaid
 flowchart TD
-  A[Extension side panel] --> B[POST /v1/jobs/from-transcript]
+  A[Extension side panel] --> B[POST /v1/epub/from-transcript]
   B --> C[createJob in Postgres]
   C --> D[runPipelineInline]
   D --> E[buildBookletModel]
   E --> F[optional LLM enrichment]
   F --> G[render artifacts: epub/pdf/md]
   G --> H[save artifact metadata]
-  H --> I[job status -> succeeded/failed]
-  I --> J[Extension polls and shows downloads]
+  H --> I[create response includes artifacts + inspector]
+  I --> J[Extension shows download immediately]
+  I --> K[fallback polling only if inline details missing]
 ```
 
 Important: there is no background queue right now. The pipeline runs inline in the backend process.
@@ -109,5 +119,5 @@ flowchart LR
 │   └── src/api/             # API client
 ├── docs/
 ├── scripts/
-└── tasks/todo.md
+└── tasks/method-compare/
 ```

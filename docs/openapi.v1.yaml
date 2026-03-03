@@ -23,7 +23,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateEpubFromTranscriptRequest"
+              $ref: "#/components/schemas/CreateTranscriptJobRequest"
       responses:
         "202":
           description: Job accepted
@@ -49,10 +49,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateTranscriptJobRequest"
+              $ref: "#/components/schemas/CreateEpubFromTranscriptRequest"
       responses:
+        "200":
+          description: EPUB generated inline with artifacts and inspector stages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEpubFromTranscriptResponse"
         "202":
-          description: Job accepted
+          description: Job accepted (fallback if inline response is not available)
           content:
             application/json:
               schema:
@@ -248,6 +254,34 @@ components:
         created_at:
           type: string
           format: date-time
+    CreateEpubFromTranscriptResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - status
+        - created_at
+        - artifacts
+        - stages
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [succeeded]
+        created_at:
+          type: string
+          format: date-time
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtifactItem"
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/InspectorStage"
+        traceability:
+          $ref: "#/components/schemas/Traceability"
     JobError:
       type: object
       additionalProperties: false

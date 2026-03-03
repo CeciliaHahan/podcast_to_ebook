@@ -12,12 +12,44 @@ export type JobAcceptedResponse = {
   created_at: string;
 };
 
+export type CreateEpubFromTranscriptResponse = JobAcceptedResponse & {
+  artifacts?: Array<{
+    type: OutputFormat;
+    file_name: string;
+    size_bytes: number;
+    download_url: string;
+    expires_at: string;
+  }>;
+  stages?: Array<{
+    stage: string;
+    ts: string;
+    input?: Record<string, unknown>;
+    output?: Record<string, unknown>;
+    config?: Record<string, unknown>;
+    notes?: string;
+  }>;
+  traceability?: {
+    source_type: "transcript";
+    source_ref: string;
+    generated_at: string;
+  };
+};
+
 export type CreateTranscriptJobRequest = {
   title: string;
   language: string;
   transcript_text: string;
   template_id?: string;
   output_formats: OutputFormat[];
+  metadata?: Record<string, unknown>;
+  compliance_declaration: ComplianceDeclaration;
+};
+
+export type CreateEpubFromTranscriptRequest = {
+  title: string;
+  language: string;
+  transcript_text: string;
+  template_id?: string;
   metadata?: Record<string, unknown>;
   compliance_declaration: ComplianceDeclaration;
 };

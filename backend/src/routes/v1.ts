@@ -32,6 +32,16 @@ const epubTranscriptRequestSchema = z.object({
   compliance_declaration: complianceSchema,
 });
 
+function mapArtifactsResponse(items: Awaited<ReturnType<typeof listArtifacts>>) {
+  return items.map((item) => ({
+    type: item.type,
+    file_name: item.fileName,
+    size_bytes: item.sizeBytes,
+    download_url: item.downloadUrl,
+    expires_at: item.expiresAt,
+  }));
+}
+
 function getUser(req: Request): { id: string; email: string } {
   const user = req.authUser;
   if (!user) {
@@ -45,6 +55,7 @@ async function createTranscriptJobResponse(
   res: Response,
   parsed: z.infer<typeof transcriptRequestSchema> | z.infer<typeof epubTranscriptRequestSchema>,
   outputFormats: z.infer<typeof outputFormatSchema>,
+  includeInlineDetails = false,
 ) {
   const user = getUser(req);
   const job = await createTranscriptJob({
@@ -57,10 +68,28 @@ async function createTranscriptJobResponse(
     metadata: parsed.metadata,
     compliance: parsed.compliance_declaration,
   });
-  res.status(202).json({
+
+  const basePayload = {
     job_id: job.jobId,
     status: job.status,
     created_at: job.createdAt,
+  };
+
+  if (!includeInlineDetails || job.status !== "succeeded") {
+    res.status(202).json(basePayload);
+    return;
+  }
+
+  const [artifacts, stages] = await Promise.all([listArtifacts(job.jobId), getJobInspectorTrace(job.jobId)]);
+  res.status(200).json({
+    ...basePayload,
+    artifacts: mapArtifactsResponse(artifacts),
+    stages,
+    traceability: {
+      source_type: "transcript",
+      source_ref: "internal://source-ref",
+      generated_at: new Date().toISOString(),
+    },
   });
 }
 
@@ -71,7 +100,7 @@ const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
 
 const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
   const parsed = epubTranscriptRequestSchema.parse(req.body);
-  await createTranscriptJobResponse(req, res, parsed, ["epub"]);
+  await createTranscriptJobResponse(req, res, parsed, ["epub"], true);
 });
 
 router.post("/jobs/from-transcript", createTranscriptRoute);
@@ -117,13 +146,7 @@ router.get(
     res.status(200).json({
       job_id: job.id,
       status: job.status,
-      artifacts: artifacts.map((item) => ({
-        type: item.type,
-        file_name: item.fileName,
-        size_bytes: item.sizeBytes,
-        download_url: item.downloadUrl,
-        expires_at: item.expiresAt,
-      })),
+      artifacts: mapArtifactsResponse(artifacts),
       traceability: {
         source_type: job.sourceType,
         source_ref: "internal://source-ref",
