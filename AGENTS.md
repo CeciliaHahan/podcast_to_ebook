@@ -15,6 +15,7 @@ This project is for one user. Keep all work simple, direct, and low-overhead.
 2. Keep commits small and focused; split mixed work (for example docs + refactor) into separate commits.
 3. Use concise, action-oriented commit messages that describe intent.
 4. Push directly to `origin/main` for completed work in this repo (single-user workflow; no feature branch required).
+5. Default agent behavior: after completing requested work and basic validation, create atomic commit(s) and push to `origin/main` without waiting for extra confirmation, unless the user explicitly says not to commit/push.
 
 ## Default Workflow
 
