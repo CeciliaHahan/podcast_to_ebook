@@ -46,7 +46,8 @@ Use this tree to route work quickly.
 ├── AGENTS.md                     # This guide
 ├── README.md                     # Project overview + quick start
 ├── tasks/
-│   └── method-compare/           # Method comparison outputs and reports
+│   ├── method-compare/           # Method comparison outputs and reports
+│   └── transcript-samples/       # Local transcript fixtures for fast E2E iteration
 ├── backend/
 │   ├── src/
 │   │   ├── app.ts                # Express app wiring

@@ -47,6 +47,19 @@ export type JobInputRecord = {
   rssUrl: string | null;
 };
 
+export type TranscriptSampleSummary = {
+  jobId: string;
+  title: string;
+  language: string;
+  createdAt: string;
+  charCount: number;
+  preview: string;
+};
+
+export type TranscriptSampleDetail = TranscriptSampleSummary & {
+  transcriptText: string;
+};
+
 export type ArtifactDownloadRecord = {
   fileName: string;
   storageUri: string;
@@ -3361,12 +3374,117 @@ export async function getJobInputByJobId(jobId: string): Promise<JobInputRecord 
   };
 }
 
+const TRANSCRIPT_SAMPLE_PREVIEW_MAX = 240;
+
+function transcriptSamplePreview(input: string): string {
+  const cleaned = cleanLine(input.replace(/\s+/g, " "));
+  if (cleaned.length <= TRANSCRIPT_SAMPLE_PREVIEW_MAX) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, TRANSCRIPT_SAMPLE_PREVIEW_MAX - 1)}…`;
+}
+
+export async function listRecentTranscriptSamples(
+  userId: string,
+  limit: number,
+): Promise<TranscriptSampleSummary[]> {
+  const safeLimit = Math.max(1, Math.min(30, Math.floor(limit)));
+  const result = await db.query<{
+    job_id: string;
+    title: string | null;
+    language: string | null;
+    created_at: string;
+    transcript_text: string | null;
+  }>(
+    `SELECT j.id AS job_id,
+            j.title,
+            j.language,
+            j.created_at,
+            ji.metadata->>'transcript_text' AS transcript_text
+       FROM jobs j
+       JOIN job_inputs ji ON ji.job_id = j.id
+      WHERE j.user_id = $1
+        AND j.source_type = 'transcript'::source_type
+        AND COALESCE(ji.metadata->>'transcript_text', '') <> ''
+      ORDER BY j.created_at DESC
+      LIMIT $2`,
+    [userId, safeLimit],
+  );
+
+  return result.rows.map((row) => {
+    const transcriptText = String(row.transcript_text ?? "");
+    return {
+      jobId: row.job_id,
+      title: cleanLine(row.title ?? "Untitled Transcript"),
+      language: cleanLine(row.language ?? "zh-CN"),
+      createdAt: row.created_at,
+      charCount: transcriptText.length,
+      preview: transcriptSamplePreview(transcriptText),
+    };
+  });
+}
+
+export async function getTranscriptSampleByJobId(
+  jobId: string,
+  userId: string,
+): Promise<TranscriptSampleDetail | null> {
+  const result = await db.query<{
+    job_id: string;
+    title: string | null;
+    language: string | null;
+    created_at: string;
+    transcript_text: string | null;
+  }>(
+    `SELECT j.id AS job_id,
+            j.title,
+            j.language,
+            j.created_at,
+            ji.metadata->>'transcript_text' AS transcript_text
+       FROM jobs j
+       JOIN job_inputs ji ON ji.job_id = j.id
+      WHERE j.id = $1
+        AND j.user_id = $2
+        AND j.source_type = 'transcript'::source_type
+      LIMIT 1`,
+    [jobId, userId],
+  );
+  if (!result.rowCount || !result.rows[0]) {
+    return null;
+  }
+  const row = result.rows[0];
+  const transcriptText = String(row.transcript_text ?? "");
+  if (!transcriptText.trim()) {
+    return null;
+  }
+  return {
+    jobId: row.job_id,
+    title: cleanLine(row.title ?? "Untitled Transcript"),
+    language: cleanLine(row.language ?? "zh-CN"),
+    createdAt: row.created_at,
+    charCount: transcriptText.length,
+    preview: transcriptSamplePreview(transcriptText),
+    transcriptText,
+  };
+}
+
 export async function setJobInspectorTrace(jobId: string, stages: InspectorStageRecord[]): Promise<void> {
   await db.query(
     `UPDATE job_inputs
         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('inspector_trace', $2::jsonb)
       WHERE job_id = $1`,
     [jobId, JSON.stringify(stages)],
+  );
+}
+
+export async function appendJobInspectorStage(jobId: string, stage: InspectorStageRecord): Promise<void> {
+  await db.query(
+    `UPDATE job_inputs
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+          'inspector_trace',
+          COALESCE(metadata->'inspector_trace', '[]'::jsonb) || $2::jsonb
+        )
+      WHERE job_id = $1`,
+    [jobId, JSON.stringify([stage])],
   );
 }
 

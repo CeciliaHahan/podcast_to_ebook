@@ -36,6 +36,27 @@ Or from repo root:
 ./scripts/dev-up.sh
 ```
 
+## Live E2E Observability Dashboard
+
+Use this when you want a result-first transcript -> EPUB loop with visible stage-by-stage progress.
+
+```bash
+node scripts/observe-transcript-run.mjs
+```
+
+What you get:
+
+- sample picker (local samples + recent transcript runs)
+- one-click E2E run (`/v1/jobs/from-transcript`)
+- live stage timeline (`transcript`, `normalization`, `llm_request`, `llm_response`, etc.)
+- final EPUB + Markdown result panel
+
+Local sample files live in:
+
+```text
+tasks/transcript-samples/
+```
+
 ## API Surface (Current)
 
 | Method | Path | Status |

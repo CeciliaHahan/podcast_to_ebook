@@ -1,5 +1,6 @@
 import { ApiError } from "../lib/errors.js";
 import {
+  appendJobInspectorStage,
   createArtifacts,
   createJob,
   setJobInspectorTrace,
@@ -14,6 +15,8 @@ const OUTPUT_FORMAT_PRIORITY: OutputFormat[] = ["epub", "pdf", "md"];
 
 const ACCEPTANCE_COPY =
   "Generated outputs are for personal use or explicitly authorized use only. For personal use only. No commercial usage is allowed here.";
+
+const liveInspectorStagesByJobId = new Map<string, InspectorStageRecord[]>();
 
 function assertCompliance(input: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean }) {
   if (!input.for_personal_or_authorized_use_only || !input.no_commercial_use) {
@@ -69,10 +72,18 @@ async function runPipelineInline(params: {
   rawInput: CreateJobInput["rawInput"];
 }) {
   const stages: InspectorStageRecord[] = [];
+  liveInspectorStagesByJobId.set(params.jobId, stages);
   const pushStage = (stage: InspectorPushInput) => {
-    stages.push({
+    const record: InspectorStageRecord = {
       ...stage,
       ts: new Date().toISOString(),
+    };
+    stages.push(record);
+    void appendJobInspectorStage(params.jobId, record).catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[jobsService] failed to append live inspector stage for ${params.jobId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
   };
 
@@ -142,6 +153,7 @@ async function runPipelineInline(params: {
     throw error;
   } finally {
     await setJobInspectorTrace(params.jobId, stages);
+    liveInspectorStagesByJobId.delete(params.jobId);
   }
 }
 
@@ -151,6 +163,7 @@ async function createAndRunJob(params: {
   language?: string;
   templateId?: string;
   outputFormats: OutputFormat[];
+  runMode?: "inline" | "background";
   sourceRef?: string;
   inputCharCount?: number;
   compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
@@ -161,6 +174,7 @@ async function createAndRunJob(params: {
   const resolvedTitle = sanitizeArtifactTitle(params.title, "Podcast Notes");
   const resolvedTemplateId = params.templateId ?? DEFAULT_TEMPLATE_ID;
   const outputFormats = normalizeOutputFormats(params.outputFormats);
+  const runMode = params.runMode ?? "inline";
 
   const job = await createJob({
     userId: params.userId,
@@ -179,19 +193,30 @@ async function createAndRunJob(params: {
   });
 
   if (job.status === "queued") {
-    await runPipelineInline({
-      jobId: job.jobId,
-      title: resolvedTitle,
-      language: params.language,
-      templateId: resolvedTemplateId,
-      outputFormats,
-      sourceRef: params.sourceRef,
-      rawInput: params.rawInput,
-    });
-    return {
-      ...job,
-      status: "succeeded" as const,
+    const runPipeline = async () => {
+      await runPipelineInline({
+        jobId: job.jobId,
+        title: resolvedTitle,
+        language: params.language,
+        templateId: resolvedTemplateId,
+        outputFormats,
+        sourceRef: params.sourceRef,
+        rawInput: params.rawInput,
+      });
     };
+
+    if (runMode === "background") {
+      void runPipeline().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[jobsService] background pipeline failed for ${job.jobId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+      return job;
+    }
+
+    await runPipeline();
+    return { ...job, status: "succeeded" as const };
   }
 
   return job;
@@ -204,6 +229,7 @@ export async function createTranscriptJob(params: {
   transcriptText: string;
   templateId?: string;
   outputFormats: OutputFormat[];
+  runMode?: "inline" | "background";
   metadata?: Record<string, unknown>;
   compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
 }) {
@@ -217,6 +243,7 @@ export async function createTranscriptJob(params: {
     language: params.language,
     templateId: params.templateId,
     outputFormats: params.outputFormats,
+    runMode: params.runMode,
     sourceRef: typeof params.metadata?.episode_url === "string" ? params.metadata.episode_url : undefined,
     inputCharCount: params.transcriptText.length,
     compliance: params.compliance,
@@ -234,4 +261,12 @@ export function getServiceLimits() {
   return {
     maxTranscriptChars: MAX_TRANSCRIPT_CHARS,
   };
+}
+
+export function getLiveJobInspectorTrace(jobId: string): InspectorStageRecord[] | null {
+  const stages = liveInspectorStagesByJobId.get(jobId);
+  if (!stages) {
+    return null;
+  }
+  return [...stages];
 }
