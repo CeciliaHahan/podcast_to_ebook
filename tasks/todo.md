@@ -1,5 +1,50 @@
 # TODO
 
+## Current Task: Phase 8 no-poll primary path on EPUB alias response (2026-03-04)
+
+### Plan
+
+- [x] Make `/v1/epub/from-transcript` return inline artifacts + inspector stages when inline generation succeeds.
+- [x] Keep `/v1/jobs/from-transcript` behavior unchanged for compatibility.
+- [x] Update sidepanel to consume inline details first and treat polling as fallback.
+- [x] Update OpenAPI + typed extension API contract for inline alias response.
+- [x] Extend regression script to assert inline details in create response when expected.
+- [x] Run validation:
+  - backend typecheck,
+  - backend config tests,
+  - sidepanel syntax check,
+  - jobs-path regression,
+  - alias-path regression with inline-detail assertion,
+  - dev smoke.
+
+### Review
+
+- Backend route behavior updated in `backend/src/routes/v1.ts`:
+  - `/v1/epub/from-transcript` now returns `200` with:
+    - `job_id`, `status`, `created_at`,
+    - `artifacts`,
+    - `stages`,
+    - `traceability`,
+    when inline generation finishes successfully.
+  - fallback remains `202` accepted shape if inline details are not available.
+  - `/v1/jobs/from-transcript` remains backward-compatible.
+- Sidepanel behavior updated in `extension/sidepanel/sidepanel.js`:
+  - if create response includes inline `artifacts` + `stages`, UI renders immediately and skips polling.
+  - if inline details are absent, existing status polling/fetch flow is used as fallback.
+- Regression harness updated in `scripts/regression-transcript-flow.sh`:
+  - added `EXPECT_INLINE_DETAILS=1` assertion mode for create-response artifacts/stages verification.
+- Contract updates:
+  - `docs/openapi.v1.yaml` now documents alias `200` inline response and `202` fallback.
+  - `extension/src/api/types.ts` adds EPUB alias request/response types.
+  - `extension/src/api/jobs.ts` adds `createEpubFromTranscript()` method.
+- Validation results:
+  - `cd backend && npm run typecheck` passed.
+  - `cd backend && npm run test:llm-config` passed.
+  - `node --check extension/sidepanel/sidepanel.js` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_d30f82f32f8e5dc1`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 EXPECT_INLINE_DETAILS=1 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_c3f52447d7e5ddad`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with `job_id=job_848562309550144e`.
+
 ## Current Task: Phase 7 sidepanel skips polling when create already succeeded (2026-03-04)
 
 ### Plan
