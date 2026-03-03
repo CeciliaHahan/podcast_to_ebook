@@ -2,8 +2,14 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
-import { getJobById, getJobInspectorTrace, listArtifacts } from "../repositories/jobsRepo.js";
-import { createTranscriptJob, getServiceLimits } from "../services/jobsService.js";
+import {
+  getJobById,
+  getJobInspectorTrace,
+  getTranscriptSampleByJobId,
+  listArtifacts,
+  listRecentTranscriptSamples,
+} from "../repositories/jobsRepo.js";
+import { createTranscriptJob, getLiveJobInspectorTrace, getServiceLimits } from "../services/jobsService.js";
 
 const router = Router();
 
@@ -55,6 +61,7 @@ async function createTranscriptJobResponse(
   res: Response,
   parsed: z.infer<typeof transcriptRequestSchema> | z.infer<typeof epubTranscriptRequestSchema>,
   outputFormats: z.infer<typeof outputFormatSchema>,
+  runMode: "inline" | "background",
   includeInlineDetails = false,
 ) {
   const user = getUser(req);
@@ -65,6 +72,7 @@ async function createTranscriptJobResponse(
     transcriptText: parsed.transcript_text,
     templateId: parsed.template_id,
     outputFormats,
+    runMode,
     metadata: parsed.metadata,
     compliance: parsed.compliance_declaration,
   });
@@ -95,12 +103,12 @@ async function createTranscriptJobResponse(
 
 const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
   const parsed = transcriptRequestSchema.parse(req.body);
-  await createTranscriptJobResponse(req, res, parsed, parsed.output_formats);
+  await createTranscriptJobResponse(req, res, parsed, parsed.output_formats, "background");
 });
 
 const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
   const parsed = epubTranscriptRequestSchema.parse(req.body);
-  await createTranscriptJobResponse(req, res, parsed, ["epub"], true);
+  await createTranscriptJobResponse(req, res, parsed, ["epub"], "inline", true);
 });
 
 router.post("/jobs/from-transcript", createTranscriptRoute);
@@ -164,10 +172,54 @@ router.get(
     if (!job) {
       throw new ApiError(404, "NOT_FOUND", "Job not found.");
     }
-    const stages = await getJobInspectorTrace(job.id);
+    const liveStages = getLiveJobInspectorTrace(job.id);
+    const stages = liveStages ?? (await getJobInspectorTrace(job.id));
     res.status(200).json({
       job_id: job.id,
       stages,
+      live: Boolean(liveStages && job.status === "processing"),
+    });
+  }),
+);
+
+router.get(
+  "/dev/transcript-samples",
+  asyncHandler(async (req, res) => {
+    const user = getUser(req);
+    const parsedLimit = Number(req.query.limit ?? 12);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(30, Math.floor(parsedLimit))) : 12;
+    const samples = await listRecentTranscriptSamples(user.id, limit);
+    res.status(200).json({
+      samples: samples.map((sample) => ({
+        job_id: sample.jobId,
+        title: sample.title,
+        language: sample.language,
+        created_at: sample.createdAt,
+        char_count: sample.charCount,
+        preview: sample.preview,
+      })),
+    });
+  }),
+);
+
+router.get(
+  "/dev/transcript-samples/:job_id",
+  asyncHandler(async (req, res) => {
+    const user = getUser(req);
+    const sample = await getTranscriptSampleByJobId(req.params.job_id, user.id);
+    if (!sample) {
+      throw new ApiError(404, "NOT_FOUND", "Transcript sample not found.");
+    }
+    res.status(200).json({
+      sample: {
+        job_id: sample.jobId,
+        title: sample.title,
+        language: sample.language,
+        created_at: sample.createdAt,
+        char_count: sample.charCount,
+        preview: sample.preview,
+        transcript_text: sample.transcriptText,
+      },
     });
   }),
 );

@@ -1,0 +1,11 @@
+{
+  "samples": [
+    {
+      "id": "local:mini-roundtable",
+      "file": "mini-roundtable.txt",
+      "title": "Mini Roundtable Sample",
+      "language": "zh-CN",
+      "notes": "Small local transcript sample for quick end-to-end iteration."
+    }
+  ]
+}
