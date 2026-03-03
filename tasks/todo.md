@@ -27,11 +27,13 @@
   - `README.md` clarifies alias endpoint is EPUB-only and does not require `output_formats`.
 - Regression script upgraded:
   - `scripts/regression-transcript-flow.sh` now supports `INCLUDE_OUTPUT_FORMATS=0|1`.
+- `scripts/dev-smoke.sh` now exercises `/v1/epub/from-transcript` with EPUB-only request payload.
 - Validation results:
   - `cd backend && npm run typecheck` passed.
   - `node --check extension/sidepanel/sidepanel.js` passed.
   - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_7d31be4d5d05d57c`.
-  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_2e8cddfbf2e24f06`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript INCLUDE_OUTPUT_FORMATS=0 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_5d38c3f1e16b7eff`.
+  - `BASE_URL=http://localhost:18080 ./scripts/dev-smoke.sh` passed with `job_id=job_a3e58454014ba75c`.
 
 ## Current Task: Phase 4 transcript-only internals in job creation path (2026-03-04)
 

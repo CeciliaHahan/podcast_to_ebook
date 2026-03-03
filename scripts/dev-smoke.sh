@@ -9,7 +9,7 @@ curl -sS "$BASE_URL/healthz"
 echo
 
 echo "Create transcript job:"
-CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/jobs/from-transcript" \
+CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/epub/from-transcript" \
   -H "$AUTH_HEADER" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -17,7 +17,6 @@ CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/jobs/from-transcript" \
     "language":"zh-CN",
     "transcript_text":"这是用于 smoke test 的测试文本，验证任务创建与产物下载流程。",
     "template_id":"templateA-v0-book",
-    "output_formats":["epub","pdf","md"],
     "metadata":{"episode_url":"https://example.com/ep/smoke"},
     "compliance_declaration":{
       "for_personal_or_authorized_use_only":true,
