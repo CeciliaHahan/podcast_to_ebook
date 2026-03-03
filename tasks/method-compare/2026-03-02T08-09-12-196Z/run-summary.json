@@ -1,0 +1,26 @@
+{
+  "runId": "2026-03-02T08-09-12-196Z",
+  "createdAt": "2026-03-02T08:13:03.907Z",
+  "transcriptPath": "/Users/cecilia/Downloads/077 _ Vibe Shift 三部曲：匮乏时代的流行文化 Popular culture in the age of scarcity.txt",
+  "baseUrl": "http://localhost:8081",
+  "methods": [
+    {
+      "method": "A",
+      "jobId": "job_a64c0325de55f3c5",
+      "status": "succeeded",
+      "page": "method-A.html"
+    },
+    {
+      "method": "B",
+      "jobId": "job_768de0416961b0af",
+      "status": "succeeded",
+      "page": "method-B.html"
+    },
+    {
+      "method": "C",
+      "jobId": "job_744edcdeb001068b",
+      "status": "succeeded",
+      "page": "method-C.html"
+    }
+  ]
+}

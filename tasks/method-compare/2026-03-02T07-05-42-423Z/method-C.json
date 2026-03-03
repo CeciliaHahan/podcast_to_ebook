@@ -1,0 +1,165 @@
+{
+  "methodCode": "C",
+  "methodLabel": "Method C · Strict Template-A Prompt + Merge",
+  "createRequest": {
+    "title": "Method Compare Sample",
+    "language": "zh-CN",
+    "transcript_text": "Host 00:00\n今天我们聊一个常见问题：信息很多，但行动很少。\n\nGuest 00:28\n我建议先把目标拆成今天能做的一步，不要一次做完。\n\nHost 01:02\n很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n\nGuest 01:36\n比如先花十分钟整理待办，只保留三件最重要的事。\n\nHost 02:15\n如果执行中断了，也不要自责，第二天继续就行。\n",
+    "template_id": "templateA-v0-book",
+    "output_formats": [
+      "epub",
+      "md"
+    ],
+    "metadata": {
+      "episode_url": "https://example.com/episodes/method-compare",
+      "generation_method": "C"
+    },
+    "compliance_declaration": {
+      "for_personal_or_authorized_use_only": true,
+      "no_commercial_use": true
+    }
+  },
+  "createResponse": {
+    "job_id": "job_698ab4cbf2129753",
+    "status": "queued",
+    "created_at": "2026-03-02T07:06:51.181Z"
+  },
+  "snapshots": [
+    {
+      "job_id": "job_698ab4cbf2129753",
+      "status": "succeeded",
+      "progress": 100,
+      "stage": "completed",
+      "created_at": "2026-03-02T07:06:51.181Z",
+      "updated_at": "2026-03-02T07:07:23.645Z",
+      "error": null
+    }
+  ],
+  "finalStatus": {
+    "job_id": "job_698ab4cbf2129753",
+    "status": "succeeded",
+    "progress": 100,
+    "stage": "completed",
+    "created_at": "2026-03-02T07:06:51.181Z",
+    "updated_at": "2026-03-02T07:07:23.645Z",
+    "error": null
+  },
+  "inspector": {
+    "job_id": "job_698ab4cbf2129753",
+    "stages": [
+      {
+        "stage": "transcript",
+        "ts": "2026-03-02T07:06:51.185Z",
+        "input": {
+          "source_ref": "https://example.com/episodes/method-compare",
+          "source_type": "transcript",
+          "transcript_chars": 188,
+          "transcript_preview": "Host 00:00\n今天我们聊一个常见问题：信息很多，但行动很少。\n\nGuest 00:28\n我建议先把目标拆成今天能做的一步，不要一次做完。\n\nHost 01:02\n很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n\nGuest 01:36\n比如先花十分钟整理待办，只保留三件最重要的事。\n\nHost 02:15\n如果执行中断了，也不要自责，第二天继续就行。\n"
+        },
+        "config": {
+          "template_id": "templateA-v0-book",
+          "output_formats": [
+            "epub",
+            "md"
+          ]
+        }
+      },
+      {
+        "stage": "llm_request",
+        "ts": "2026-03-02T07:06:51.186Z",
+        "input": {
+          "prompt_preview": "任务：将播客转写整理成“知识小册子”结构化草稿（JSON）。\n硬性要求：\n1) 绝不虚构事实、观点、时间戳、说话人、引文。\n2) 无法确认的判断请写“未在原文中明确说明”。\n3) quote.text 必须是原文忠实片段（可轻微去口水词，不改变含义）。\n4) 输出中文，具体可执行，避免空泛口号。\n5) 仅输出一个 JSON 对象，不要输出其他内容。\n6) `chapters` 数量和顺序必须与 chapter_plan 完全一致，不得增删章节或重排。\n7) 每章内容仅使用该章对应的 context/evidence；禁止跨章挪用引文。\nJSON 字段契约（必须使用以下键名）：\n{\n  \"suitableFor\": string[3-5],\n  \"outcomes\": string[3-5],\n  \"oneLineConclusion\": string,\n  \"tldr\": string[5-7],\n  \"chapters\": [\n    {\n      \"title\": string,\n      \"points\": string[3-5],\n      \"quotes\": [{\"speaker\": string, \"timestamp\": string, \"text\": string}, {\"speaker\": string, \"timestamp\": string, \"text\": string}, \"... 2-4 total\"],\n      \"explanation\": {\n        \"background\": string,\n        \"coreConcept\": string,\n        \"judgmentFramework\": string,\n        \"commonMisunderstanding\": string\n      },\n      \"actions\": string[2-4]\n    }\n  ],\n  \"actionNow\": string[2-3],\n  \"actionWeek\": string[2-3],\n  \"actionLong\": string[1-2],\n  \"terms\": [{\"term\": string, \"definition\": string}, \"... 3-6 total\"],\n  \"appendixThemes\": [\n    {\"name\": string, \"quotes\": [{\"speaker\": string, \"timestamp\": string, \"text\": string}, \"... 2-6 total\"]},\n    {\"name\": string, \"quotes\": [{\"speaker\": string, \"timestamp\": string, \"text\": string}, \"... 2-6 total\"]}\n  ]\n}\n章节质量要求：\n- 每章 points 要具体，避免抽象套话。\n- 每章至少 2 条 quotes，优先保留有信息密度的原文句子。\n- 每章 explanation 需要可读、保守，不可脱离原文编造成因。\n- 每章 actions 用动词开头，必须能执行。\n- chapter[i].title 应与 chapter_plan[i] 对齐，可轻微润色但不得偏离主题。\n全局质检（生成前自查）：\n- TL;DR 每条都能在 transcript 中找到依据。\n- 引用里的时间戳与说话人尽量与原文一致。\n- 若 transcript 存在噪音/乱码，避免把噪音作为关键引用。\n上下文元信息:\n- title: Method Compare Sample\n- language: zh-CN\n- source_type: transcript\n- source_ref: https://example.com/episodes/method-compare\n- chapter range hints:\n- chapter 1: 开场与话题设定（00:00 - 00:00）\n- chapter 2: 开场与话题设定（00:28 - 00:28）\n- chapter 3: 开场与话题设定（01:02 - 01:02）\n- chapter 4: 只保留三件最重要的事 / 比如先花十分钟整理待办（01:36 - 01:36）\n- chapter 5: 也不要自责 / 如果执行中断了（02:15 - 02:15）\n- chapter_plan:\n- chapter 1\n  - title: 开场与话题设定\n  - range: 00:00 - 00:00\n  - intent: set-context-and-goals\n  - segment_ids: seg_01\n  - signals: start, split_left\n  - context_excerpt: 今天我们聊一个常见问题：信息很多，但行动很少。\n  - evidence_anchors:\n    - [00:00] Host: 今天我们聊一个常见问题：信息很多，但行动很少。\n    - [--:--] Speaker: 围绕“开场与话题设定”的关键观点 2。\n- chapter 2\n  - title: 开场与话题设定\n  - range: 00:28 - 00:28\n  - intent: set-context-and-goals\n  - segment_ids: seg_02\n  - signals: start, split_left, split_right\n  - context_excerpt: 我建议先把目标拆成今天能做的一步，不要一次做完。\n  - evidence_anchors:\n    - [00:28] Guest: 我建议先把目标拆成今天能做的一步，不要一次做完。\n    - [--:--] Speaker: 围绕“开场与话题设定”的关键观点 2。\n- chapter 3\n  - title: 开场与话题设定\n  - range: 01:02 - 01:02\n  - intent: set-context-and-goals\n  - segment_ids: seg_03\n  - signals: start, split_right, split_left\n  - context_excerpt: 很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n  - evidence_anchors:\n    - [01:02] Host: 很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n    - [--:--] Speaker: 围绕“开场与话题设定”的关键观点 2。\n- chapter 4\n  - title: 只保留三件最重要的事 / 比如先花十分钟整理待办\n  - range: 01:36 - 01:36\n  - intent: summarize-and-apply\n  - segment_ids: seg_04\n  - signals: start, split_right, split_left\n  - context_excerpt: 比如先花十分钟整理待办，只保留三件最重要的事。\n  - evidence_anchors:\n    - [01:36] Guest: 比如先花十分钟整理待办，只保留三件最重要的事。\n    - [--:--] Speaker: 围绕“只保留三件最重要的事 / 比如先花十分钟整理待办”的关键观点 2。\n- chapter 5\n  - title: 也不要自责 / 如果执行中断了\n  - range: 02:15 - 02:15\n  - intent: summarize-and-apply\n  - segment_ids: seg_05\n  - signals: start, split_right\n  - context_excerpt: 如果执行中断了，也不要自责，第二天继续就行。\n  - evidence_anchors:\n    - [02:15] Host: 如果执行中断了，也不要自责，第二天继续就行。\n    - [--:--] Speaker: 围绕“也不要自责 / 如果执行中断了”的关键观点 2。\n下面是原始 transcript（可能包含口头语和噪音）：\nHost 00:00\n今天我们聊一个常见问题：信息很多，但行动很少。\n\nGuest 00:28\n我建议先把目标拆成今天能做的一步，不要一次做完。\n\nHost 01:02\n很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n\nGuest 01:36\n比如先花十分钟整理待办，只保留三件最重要的事。\n\nHost 02:15\n如果执行中断了，也不要自责，第二天继续就行。\n"
+        },
+        "config": {
+          "model": "openai/gpt-4.1-mini",
+          "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+          "timeout_ms": 45000,
+          "temperature": 0.2,
+          "input_max_chars": 80000
+        }
+      },
+      {
+        "stage": "llm_response",
+        "ts": "2026-03-02T07:07:23.622Z",
+        "input": {
+          "http_status": 200,
+          "raw_response_preview": "{\n  \"suitableFor\": [\n    \"时间管理初学者\",\n    \"效率提升需求者\",\n    \"自我管理者\",\n    \"职场新人\",\n    \"学生群体\"\n  ],\n  \"outcomes\": [\n    \"学会将大目标拆解为可执行的小步骤\",\n    \"掌握优先处理最重要任务的方法\",\n    \"理解行动中断时的正确心态\",\n    \"能够制定简单有效的行动计划\",\n    \"提升持续执行力\"\n  ],\n  \"oneLineConclusion\": \"通过拆解目标、聚焦重点和宽容中断，能有效提升行动力和执行效率。\",\n  \"tldr\": [\n    \"信息过载导致行动力不足是常见问题。\",\n    \"将目标拆成当天能完成的小步骤，避免一次性完成。\",\n    \"无需等待完整计划，先做最小可行动作。\",\n    \"每天花时间整理待办，只保留三件最重要的事。\",\n    \"执行中断时不必自责，次日继续即可。\"\n  ],\n  \"chapters\": [\n    {\n      \"title\": \"开场与话题设定\",\n      \"points\": [\n        \"信息量大但行动少是普遍现象。\",\n        \"明确问题有助于后续解决方案的展开。\",\n        \"认识到行动力不足是提升效率的第一步。\"\n      ],\n      \"quotes\": [\n        {\n          \"speaker\": \"Host\",\n          \"timestamp\": \"00:00\",\n          \"text\": \"今天我们聊一个常见问题：信息很多，但行动很少。\"\n        }\n      ],\n      \"explanation\": {\n        \"background\": \"现代生活和工作中信息爆炸，导致人们难以将所知转化为实际行动。\",\n        \"coreConcept\": \"信息多不等于行动多，行动力不足是效率低下的根源。\",\n        \"judgmentFramework\": \"识别信息与行动的差距，才能针对性地提升执行力。\",\n        \"commonMisunderstanding\": \"误以为掌握更多信息就能自然带来更多行动。\"\n      },\n      \"actions\": [\n        \"反思自己是否存在信息多行动少的情况\",\n        \"记录导致行动力不足的具体原因\",\n        \"设定提升行动力的初步目标\"\n      ]\n    },\n    {\n      \"title\": \"开场与话题设定\",\n      \"points\": [\n        \"将大目标拆解为当天可完成的小步骤。\",\n        \"避免试图一次性完成所有任务。\",\n        \"分解目标有助于降低行动门槛。\"\n      ],\n      \"quotes\": [\n        {\n          \"speaker\": \"Guest\",\n          \"timestamp\": \"00:28\",\n          \"text\": \"我建议先把目标拆成今天能做的一步，不要一次做完。\"\n        }\n      ],\n      \"explanation\": {\n        \"background\": \"面对复杂目标时，整体任务往往让人望而却步，难以开始。\",\n        \"coreConcept\": \"拆解目标为小步骤，降低心理负担，促进实际行动。\",\n        \"judgmentFramework\": \"判断任务大小是否适合当天完成，合理拆分。\",\n        \"commonMisunderstanding\": \"认为必须完成全部任务才能算有效行动。\"\n      },\n      \"actions\": [\n        \"将当前目标拆分为最小可执行步骤\",\n        \"每天选择一小步作为当天重点\",\n        \"避免设定过于庞大的当日任务\"\n      ]\n    },\n    {\n      \"title\": \"开场与话题设定\",\n      \"points\": [\n        \"不必等待完整计划才能开始行动。\",\n        \"先做一个最小动作即可启动进程。\",\n        \"行动的开始比计划的完备更重要。\"\n      ],\n      \"quotes\": [\n        {\n          \"speaker\": \"Host\",\n          \"timestamp\": \"01:02\",\n          \"text\": \"很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\"\n        }\n      ],\n      \"explanation\": {\n        \"background\": \"许多人因追求完美计划而拖延行动，导致效率低下。\",\n        \"coreConcept\": \"启动行动的关键是迈出第一步，而非计划的完备。\",\n        \"judgmentFramework\": \"判断何时应停止计划，开始执行最小动作。\",\n        \"commonMisunderstanding\": \"认为没有完美计划就不能开始做事。\"\n      },\n      \"actions\": [\n        \"识别并执行当天可做的最小动作\",\n        \"避免过度计划导致拖延\",\n        \"培养先行动后调整的习惯\"\n      ]\n    },\n    {\n      \"title\": \"只保留三件最重要的事 / 比如先花十分钟整理待办\",\n      \"points\": [\n        \"每天花时间整理待办事项。\",\n        \"只保留三件最重要的任务以聚焦精力。\",\n        \"简化任务清单有助于提升执行效率。\"\n      ],\n      \"quotes\": [\n        {\n          \"speaker\": \"Guest\",\n          \"timestamp\": \"01:36\",\n          \"text\": \"比如先花十分钟整理待办，只保留三件最重要的事。\"\n        }\n      ],\n      \"explanation\": {\n        \"background\": \"任务过多导致注意力分散，难以高效完成。\",\n        \"coreConcept\": \"通过筛选和聚焦，确保精力投入最关键的任务。\",\n        \"judgmentFramework\": \"判断任务优先级，筛选出最重要的三件事。\",\n        \"commonMisunderstanding\": \"认为多任务同时进行能提高效率。\"\n      },\n      \"actions\": [\n        \"每天固定时间整理和筛选待办事项\",\n        \"确定并记录三件最重要的任务\",\n        \"优先完成筛选出的关键任务\"\n      ]\n    },\n    {\n      \"title\": \"也不要自责 / 如果执行中断了\",\n      \"points\": [\n        \"执行过程中出现中断是正常现象。\",\n        \"不必因中断而自责或放弃。\",\n        \"第二天继续执行即可保持进度。\"\n      ],\n      \"quotes\": [\n        {\n          \"speaker\": \"Host\",\n          \"timestamp\": \"02:15\",\n          \"text\": \"如果执行中断了，也不要自责，第二天继续就行。\"\n        }\n      ],\n      \"explanation\": {\n        \"background\": \"行动过程中难免遇到阻碍或中断，影响持续性。\",\n        \"coreConcept\": \"宽容对待中断，保持积极心态，持续推进任务。\",\n        \"judgmentFramework\": \"识别中断原因，调整计划，避免自责陷阱。\",\n        \"commonMisunderstanding\": \"认为中断意味着失败或无效。\"\n      },\n      \"actions\": [\n        \"接受执行中断的现实，不自责\",\n        \"制定次日继续执行的计划\",\n        \"总结中断原因，优化后续行动\"\n      ]\n    }\n  ],\n  \"actionNow\": [\n    \"拆解当前目标，确定今天可执行的最小步骤\",\n    \"整理待办事项，筛选出三件最重要的任务\"\n  ],\n  \"actionWeek\": [\n    \"每天坚持执行最重要的三件事，养成习惯\",\n    \"遇到执行中断时，调整心态，第二天继续完成\"\n  ],\n  \"actionLong\": [\n    \"建立持续拆解目标和优先排序的工作流程\"\n  ],\n  \"terms\": [\n    {\n      \"term\": \"最小可行动作\",\n      \"definition\": \"能够启动行动的最小步骤，降低开始难度。\"\n    },\n    {\n      \"term\": \"任务优先级\",\n      \"definition\": \"根据重要性和紧急性排序任务的先后顺序。\"\n    },\n    {\n      \"term\": \"行动力\",\n      \"definition\": \"将计划和想法转化为实际行动的能力。\"\n    },\n    {\n      \"term\": \"执行中断\",\n      \"definition\": \"行动过程中因各种原因暂停或中止的状态。\"\n    }\n  ],\n  \"appendixThemes\": [\n    {\n      \"name\": \"行动力提升的常见误区\",\n      \"quotes\": [\n        {\n          \"speaker\": \"Host\",\n          \"timestamp\": \"01:02\",\n          \"text\": \"很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\"\n        },\n        {\n          \"speaker\": \"Guest\",\n          \"timestamp\": \"00:28\",\n          \"text\": \"我建议先把目标拆成今天能做的一步，不要一次做完。\"\n        }\n      ]\n    },\n    {\n      \"name\": \"任务管理与优先级\",\n      \"quotes\": [\n        {\n          \"speaker\": \"Guest\",\n          \"timestamp\": \"01:36\",\n          \"text\": \"比如先花十分钟整理待办，只保留三件最重要的事。\"\n        },\n        {\n          \"speaker\": \"Host\",\n          \"timestamp\": \"02:15\",\n          \"text\": \"如果执行中断了，也不要自责，第二天继续就行。\"\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "output": {
+          "parse_ok": true,
+          "parsed_tldr": 5,
+          "parsed_terms": 4,
+          "parsed_chapters": 5
+        }
+      },
+      {
+        "stage": "normalization",
+        "ts": "2026-03-02T07:07:23.622Z",
+        "input": {
+          "base_title": "Method Compare Sample",
+          "parsed_entries": 5,
+          "planned_chapters": 5,
+          "llm_draft_available": true
+        },
+        "output": {
+          "tldr_count": 7,
+          "terms_count": 4,
+          "chapter_titles": [
+            "开场与话题设定",
+            "开场与话题设定",
+            "开场与话题设定",
+            "只保留三件最重要的事 / 比如先花十分钟整理待办",
+            "也不要自责 / 如果执行中断了"
+          ],
+          "final_chapters": 5
+        },
+        "config": {
+          "merge_caps": {
+            "tldr": 7,
+            "terms": 6,
+            "outcomes": 5,
+            "actionNow": 3,
+            "actionLong": 2,
+            "actionWeek": 3,
+            "suitableFor": 5,
+            "chapterPoints": 5,
+            "chapterQuotes": 4,
+            "draftTermsMin": 2,
+            "appendixThemes": 4,
+            "chapterActions": 4,
+            "appendixThemeQuotes": 6
+          },
+          "source_type": "transcript"
+        }
+      }
+    ]
+  },
+  "artifacts": {
+    "job_id": "job_698ab4cbf2129753",
+    "status": "succeeded",
+    "artifacts": [
+      {
+        "type": "epub",
+        "file_name": "job_698ab4cbf2129753.epub",
+        "size_bytes": 13335,
+        "download_url": "http://localhost:8080/downloads/job_698ab4cbf2129753/job_698ab4cbf2129753.epub?token=dev",
+        "expires_at": "2026-03-02T08:07:23.633Z"
+      },
+      {
+        "type": "md",
+        "file_name": "job_698ab4cbf2129753.md",
+        "size_bytes": 9663,
+        "download_url": "http://localhost:8080/downloads/job_698ab4cbf2129753/job_698ab4cbf2129753.md?token=dev",
+        "expires_at": "2026-03-02T08:07:23.644Z"
+      }
+    ],
+    "traceability": {
+      "source_type": "transcript",
+      "source_ref": "internal://source-ref",
+      "generated_at": "2026-03-02T07:07:23.656Z"
+    }
+  },
+  "markdownText": "# Method Compare Sample\n\n- Language: zh-CN\n- Creator: 由播客转写整理（v1）\n- Generated At: 2026-03-02T07:06:51.186Z\n- Source Ref: https://example.com/episodes/method-compare\n\n## chap_01 - 读前速览\n\n### 这期适合谁\n- 时间管理初学者\n- 效率提升需求者\n- 自我管理者\n- 职场新人\n- 学生群体\n\n### 你会得到什么（可落地）\n- 学会将大目标拆解为可执行的小步骤\n- 掌握优先处理最重要任务的方法\n- 理解行动中断时的正确心态\n- 能够制定简单有效的行动计划\n- 提升持续执行力\n\n### 一句话结论\n> 通过拆解目标、聚焦重点和宽容中断，能有效提升行动力和执行效率。\n\n## chap_02 - 关键要点摘要（TL;DR）\n1. 信息过载导致行动力不足是常见问题。\n2. 将目标拆成当天能完成的小步骤，避免一次性完成。\n3. 无需等待完整计划，先做最小可行动作。\n4. 每天花时间整理待办，只保留三件最重要的事。\n5. 执行中断时不必自责，次日继续即可。\n6. 第 1 章聚焦开场与话题设定，建议：列出你本期最关注的 3 个问题，按优先级排序。\n7. 第 2 章聚焦开场与话题设定，建议：列出你本期最关注的 3 个问题，按优先级排序。\n\n## chap_03 - 目录（建议 5–7 章）\n- 第 1 章：开场与话题设定（00:00 - 00:00）\n- 第 2 章：开场与话题设定（00:28 - 00:28）\n- 第 3 章：开场与话题设定（01:02 - 01:02）\n- 第 4 章：只保留三件最重要的事 / 比如先花十分钟整理待办（01:36 - 01:36）\n- 第 5 章：也不要自责 / 如果执行中断了（02:15 - 02:15）\n\n## chap_04 - 第 1 章：开场与话题设定（00:00 - 00:00）\n\n### 本章要点\n- 信息量大但行动少是普遍现象。\n- 明确问题有助于后续解决方案的展开。\n- 认识到行动力不足是提升效率的第一步。\n- 今天我们聊一个常见问题：信息很多，但行动很少\n- 围绕“开场与话题设定”的关键观点 2。\n\n### 关键引用（带时间戳）\n- [00:00] **Host**：今天我们聊一个常见问题：信息很多，但行动很少。\n- [--:--] **Speaker**：围绕“开场与话题设定”的关键观点 2。\n\n### 解释与延展（落地版）\n- 背景：现代生活和工作中信息爆炸，导致人们难以将所知转化为实际行动。\n- 核心概念：信息多不等于行动多，行动力不足是效率低下的根源。\n- 判断标准/框架：识别信息与行动的差距，才能针对性地提升执行力。\n- 常见误解：误以为掌握更多信息就能自然带来更多行动。\n\n### 可执行行动\n- 反思自己是否存在信息多行动少的情况\n- 记录导致行动力不足的具体原因\n- 设定提升行动力的初步目标\n- 列出你本期最关注的 3 个问题，按优先级排序。\n\n## chap_05 - 第 2 章：开场与话题设定（00:28 - 00:28）\n\n### 本章要点\n- 将大目标拆解为当天可完成的小步骤。\n- 避免试图一次性完成所有任务。\n- 分解目标有助于降低行动门槛。\n- 我建议先把目标拆成今天能做的一步，不要一次做完\n- 围绕“开场与话题设定”的关键观点 2。\n\n### 关键引用（带时间戳）\n- [00:28] **Guest**：我建议先把目标拆成今天能做的一步，不要一次做完。\n- [--:--] **Speaker**：围绕“开场与话题设定”的关键观点 2。\n\n### 解释与延展（落地版）\n- 背景：面对复杂目标时，整体任务往往让人望而却步，难以开始。\n- 核心概念：拆解目标为小步骤，降低心理负担，促进实际行动。\n- 判断标准/框架：判断任务大小是否适合当天完成，合理拆分。\n- 常见误解：认为必须完成全部任务才能算有效行动。\n\n### 可执行行动\n- 将当前目标拆分为最小可执行步骤\n- 每天选择一小步作为当天重点\n- 避免设定过于庞大的当日任务\n- 列出你本期最关注的 3 个问题，按优先级排序。\n\n## chap_06 - 第 3 章：开场与话题设定（01:02 - 01:02）\n\n### 本章要点\n- 不必等待完整计划才能开始行动。\n- 先做一个最小动作即可启动进程。\n- 行动的开始比计划的完备更重要。\n- 很多人以为要有完整计划才能开始，其实先做一个最小动作更重要\n- 围绕“开场与话题设定”的关键观点 2。\n\n### 关键引用（带时间戳）\n- [01:02] **Host**：很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n- [--:--] **Speaker**：围绕“开场与话题设定”的关键观点 2。\n\n### 解释与延展（落地版）\n- 背景：许多人因追求完美计划而拖延行动，导致效率低下。\n- 核心概念：启动行动的关键是迈出第一步，而非计划的完备。\n- 判断标准/框架：判断何时应停止计划，开始执行最小动作。\n- 常见误解：认为没有完美计划就不能开始做事。\n\n### 可执行行动\n- 识别并执行当天可做的最小动作\n- 避免过度计划导致拖延\n- 培养先行动后调整的习惯\n- 列出你本期最关注的 3 个问题，按优先级排序。\n\n## chap_07 - 第 4 章：只保留三件最重要的事 / 比如先花十分钟整理待办（01:36 - 01:36）\n\n### 本章要点\n- 每天花时间整理待办事项。\n- 只保留三件最重要的任务以聚焦精力。\n- 简化任务清单有助于提升执行效率。\n- 比如先花十分钟整理待办，只保留三件最重要的事\n- 围绕“只保留三件最重要的事 / 比如先花十分钟整理待办”的关键观点 2。\n\n### 关键引用（带时间戳）\n- [01:36] **Guest**：比如先花十分钟整理待办，只保留三件最重要的事。\n- [--:--] **Speaker**：围绕“只保留三件最重要的事 / 比如先花十分钟整理待办”的关键观点 2。\n\n### 解释与延展（落地版）\n- 背景：任务过多导致注意力分散，难以高效完成。\n- 核心概念：通过筛选和聚焦，确保精力投入最关键的任务。\n- 判断标准/框架：判断任务优先级，筛选出最重要的三件事。\n- 常见误解：认为多任务同时进行能提高效率。\n\n### 可执行行动\n- 每天固定时间整理和筛选待办事项\n- 确定并记录三件最重要的任务\n- 优先完成筛选出的关键任务\n- 把本章要点写成“继续做 / 停止做 / 尝试做”三列，并各填 1 条。\n\n## chap_08 - 第 5 章：也不要自责 / 如果执行中断了（02:15 - 02:15）\n\n### 本章要点\n- 执行过程中出现中断是正常现象。\n- 不必因中断而自责或放弃。\n- 第二天继续执行即可保持进度。\n- 如果执行中断了，也不要自责，第二天继续就行\n- 围绕“也不要自责 / 如果执行中断了”的关键观点 2。\n\n### 关键引用（带时间戳）\n- [02:15] **Host**：如果执行中断了，也不要自责，第二天继续就行。\n- [--:--] **Speaker**：围绕“也不要自责 / 如果执行中断了”的关键观点 2。\n\n### 解释与延展（落地版）\n- 背景：行动过程中难免遇到阻碍或中断，影响持续性。\n- 核心概念：宽容对待中断，保持积极心态，持续推进任务。\n- 判断标准/框架：识别中断原因，调整计划，避免自责陷阱。\n- 常见误解：认为中断意味着失败或无效。\n\n### 可执行行动\n- 接受执行中断的现实，不自责\n- 制定次日继续执行的计划\n- 总结中断原因，优化后续行动\n- 把本章要点写成“继续做 / 停止做 / 尝试做”三列，并各填 1 条。\n\n## chap_11 - 行动清单（汇总版）\n\n### 今天就做（≤ 15 分钟）\n- 拆解当前目标，确定今天可执行的最小步骤\n- 整理待办事项，筛选出三件最重要的任务\n- 反思自己是否存在信息多行动少的情况\n\n### 这周内做（需要安排时间）\n- 每天坚持执行最重要的三件事，养成习惯\n- 遇到执行中断时，调整心态，第二天继续完成\n- 列出你本期最关注的 3 个问题，按优先级排序。\n\n### 长期习惯（可量化）\n- 建立持续拆解目标和优先排序的工作流程\n- 避免设定过于庞大的当日任务\n\n## chap_12 - 概念与术语表（v1）\n- **最小可行动作**：能够启动行动的最小步骤，降低开始难度。\n- **任务优先级**：根据重要性和紧急性排序任务的先后顺序。\n- **行动力**：将计划和想法转化为实际行动的能力。\n- **执行中断**：行动过程中因各种原因暂停或中止的状态。\n\n## chap_13 - 附录：精选原句（按主题）\n\n### 行动力提升的常见误区\n- [01:02] **Host**：很多人以为要有完整计划才能开始，其实先做一个最小动作更重要。\n- [00:28] **Guest**：我建议先把目标拆成今天能做的一步，不要一次做完。\n- [00:00] **Host**：今天我们聊一个常见问题：信息很多，但行动很少。\n- [--:--] **Speaker**：围绕“开场与话题设定”的关键观点 2。\n\n### 任务管理与优先级\n- [01:36] **Guest**：比如先花十分钟整理待办，只保留三件最重要的事。\n- [02:15] **Host**：如果执行中断了，也不要自责，第二天继续就行。\n- [00:28] **Guest**：我建议先把目标拆成今天能做的一步，不要一次做完。\n- [--:--] **Speaker**：围绕“开场与话题设定”的关键观点 2。\n\n## chap_14 - 制作信息\n- 输入：transcript\n- 结构模板：templateA-v0-book\n- 整理规则：保留观点与行动，引用尽量带时间戳，必要口语润色但不改变含义\n- 生成时间：2026-03-02\n- 来源追踪：https://example.com/episodes/method-compare\n",
+  "mdUrl": "http://localhost:8080/downloads/job_698ab4cbf2129753/job_698ab4cbf2129753.md?token=dev",
+  "epubUrl": "http://localhost:8080/downloads/job_698ab4cbf2129753/job_698ab4cbf2129753.epub?token=dev"
+}

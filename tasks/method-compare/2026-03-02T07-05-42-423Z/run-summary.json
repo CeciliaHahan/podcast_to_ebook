@@ -1,0 +1,26 @@
+{
+  "runId": "2026-03-02T07-05-42-423Z",
+  "createdAt": "2026-03-02T07:07:23.658Z",
+  "transcriptPath": "/tmp/method_compare_sample.txt",
+  "baseUrl": "http://localhost:8080",
+  "methods": [
+    {
+      "method": "A",
+      "jobId": "job_d681172d44990aac",
+      "status": "succeeded",
+      "page": "method-A.html"
+    },
+    {
+      "method": "B",
+      "jobId": "job_3882fc75feb465d5",
+      "status": "succeeded",
+      "page": "method-B.html"
+    },
+    {
+      "method": "C",
+      "jobId": "job_698ab4cbf2129753",
+      "status": "succeeded",
+      "page": "method-C.html"
+    }
+  ]
+}
