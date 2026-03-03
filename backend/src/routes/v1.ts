@@ -31,37 +31,28 @@ function getUser(req: Request): { id: string; email: string } {
   return user;
 }
 
-function requestMeta(req: Request) {
-  return {
-    requestIp: req.ip ?? null,
-    userAgent: req.header("user-agent") ?? null,
-    idempotencyKey: req.header("idempotency-key") ?? null,
-  };
-}
+const createTranscriptRoute = asyncHandler(async (req: Request, res) => {
+  const user = getUser(req);
+  const parsed = transcriptRequestSchema.parse(req.body);
+  const job = await createTranscriptJob({
+    userId: user.id,
+    title: parsed.title,
+    language: parsed.language,
+    transcriptText: parsed.transcript_text,
+    templateId: parsed.template_id,
+    outputFormats: parsed.output_formats,
+    metadata: parsed.metadata,
+    compliance: parsed.compliance_declaration,
+  });
+  res.status(202).json({
+    job_id: job.jobId,
+    status: job.status,
+    created_at: job.createdAt,
+  });
+});
 
-router.post(
-  "/jobs/from-transcript",
-  asyncHandler(async (req, res) => {
-    const user = getUser(req);
-    const parsed = transcriptRequestSchema.parse(req.body);
-    const job = await createTranscriptJob({
-      userId: user.id,
-      title: parsed.title,
-      language: parsed.language,
-      transcriptText: parsed.transcript_text,
-      templateId: parsed.template_id,
-      outputFormats: parsed.output_formats,
-      metadata: parsed.metadata,
-      compliance: parsed.compliance_declaration,
-      ...requestMeta(req),
-    });
-    res.status(202).json({
-      job_id: job.jobId,
-      status: job.status,
-      created_at: job.createdAt,
-    });
-  }),
-);
+router.post("/jobs/from-transcript", createTranscriptRoute);
+router.post("/epub/from-transcript", createTranscriptRoute);
 
 router.get(
   "/jobs/:job_id",

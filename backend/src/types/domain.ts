@@ -30,7 +30,4 @@ export type CreateJobInput = {
     metadata?: Record<string, unknown>;
   };
   acceptanceCopy: string;
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
 };

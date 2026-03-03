@@ -158,9 +158,6 @@ async function createAndRunJob(params: {
   inputDurationSeconds?: number;
   compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
   rawInput: CreateJobInput["rawInput"];
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
 }) {
   assertCompliance(params.compliance);
 
@@ -184,9 +181,6 @@ async function createAndRunJob(params: {
     },
     rawInput: params.rawInput,
     acceptanceCopy: ACCEPTANCE_COPY,
-    requestIp: params.requestIp,
-    userAgent: params.userAgent,
-    idempotencyKey: params.idempotencyKey,
   });
 
   if (job.status === "queued") {
@@ -214,9 +208,6 @@ export async function createTranscriptJob(params: {
   outputFormats: OutputFormat[];
   metadata?: Record<string, unknown>;
   compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
-  requestIp?: string | null;
-  userAgent?: string | null;
-  idempotencyKey?: string | null;
 }) {
   if (params.transcriptText.length > MAX_TRANSCRIPT_CHARS) {
     throw new ApiError(400, "INVALID_INPUT", `Transcript exceeds ${MAX_TRANSCRIPT_CHARS} characters.`);
@@ -239,9 +230,6 @@ export async function createTranscriptJob(params: {
       },
       transcriptStorageUri: `memory://transcripts/${Date.now()}`,
     },
-    requestIp: params.requestIp,
-    userAgent: params.userAgent,
-    idempotencyKey: params.idempotencyKey,
   });
 }
 
