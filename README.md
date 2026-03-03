@@ -119,5 +119,5 @@ flowchart LR
 │   └── src/api/             # API client
 ├── docs/
 ├── scripts/
-└── tasks/todo.md
+└── tasks/method-compare/
 ```

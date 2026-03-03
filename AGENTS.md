@@ -46,7 +46,7 @@ Use this tree to route work quickly.
 ├── AGENTS.md                     # This guide
 ├── README.md                     # Project overview + quick start
 ├── tasks/
-│   └── todo.md                   # Active plan, checklist, review notes
+│   └── method-compare/           # Method comparison outputs and reports
 ├── backend/
 │   ├── src/
 │   │   ├── app.ts                # Express app wiring
