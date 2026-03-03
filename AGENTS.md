@@ -4,10 +4,9 @@ This project is for one user. Keep all work simple, direct, and low-overhead.
 
 ## Core Intent
 
-1. Deliver the smallest correct change.
-2. Explain decisions clearly.
-3. Add complexity only when it is truly needed.
-4. Teach while doing: explain fundamentals and terms, not just steps.
+1. Explain decisions clearly.
+2. Add complexity only when it is truly needed.
+3. Teach while doing: explain fundamentals and terms, not just steps.
 
 ## Git Workflow
 
@@ -17,30 +16,12 @@ This project is for one user. Keep all work simple, direct, and low-overhead.
 4. Push directly to `origin/main` for completed work in this repo (single-user workflow; no feature branch required).
 5. Default agent behavior: after completing requested work and basic validation, create atomic commit(s) and push to `origin/main` without waiting for extra confirmation, unless the user explicitly says not to commit/push.
 
-## Default Workflow
-
-1. Understand the request and read only relevant files.
-2. Write a short checkbox plan in `tasks/todo.md`.
-3. Wait for user approval before implementation.
-4. Implement in small steps and check off todo items as you finish them.
-5. Add a `Review` section in `tasks/todo.md` with what changed and why.
-
 ## Ranked Decision Priorities
 
 1. Correctness and user goal completion.
-2. Simplicity and low code impact.
-3. Readability and maintainability.
-4. Speed/optimization.
+2. Readability and maintainability.
 
 Tradeoff: A more complex solution is only acceptable if it clearly improves #1 and cannot be solved simply.
-
-## When Complexity Is Warranted (Ranked)
-
-1. Preventing data loss, security issues, or broken outputs.
-2. Fixing repeated pain that has happened at least twice.
-3. Meeting an explicit, near-term requirement (not hypothetical future scale).
-
-Tradeoff: Added abstractions increase maintenance cost and debugging time. If the risk/benefit is unclear, choose the simpler design.
 
 ## Teaching Mode (Required)
 
@@ -50,18 +31,6 @@ When answering, act like a teacher for a research-background user with limited s
 2. Define technical terms the first time they appear.
 3. Explain why a change matters, not only what changed.
 4. Prefer concrete examples over jargon.
-5. Keep explanations short, structured, and practical.
-
-## Ranked File Lookup Guide
-
-Use this order to find the right place fast.
-
-1. Product/API behavior: `backend/src/routes/`, then `backend/src/services/`.
-2. Data/state logic: `backend/src/repositories/`, `backend/src/domain/`, `docs/db-schema.v1.sql`.
-3. Extension UI/UX: `extension/sidepanel/`, then `extension/src/api/`, then `extension/popup/`.
-4. Local run/debug scripts: `scripts/`.
-5. Contracts/specs: `docs/v1-spec.md`, `docs/openapi.v1.yaml`, related docs in `docs/`.
-6. Task tracking and decisions: `tasks/todo.md`, then `README.md`.
 
 ## Project TOC (Tree View)
 
