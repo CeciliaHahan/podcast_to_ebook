@@ -1,5 +1,35 @@
 # TODO
 
+## Current Task: Phase 4 transcript-only internals in job creation path (2026-03-04)
+
+### Plan
+
+- [x] Run pre-change baseline regression on alias endpoint.
+- [x] Remove remaining generic source-type fields from active create-job runtime path.
+- [x] Persist `source_type` as transcript in `createJob` insert logic.
+- [x] Run validation:
+  - backend typecheck,
+  - transcript flow regression on `/v1/jobs/from-transcript`,
+  - transcript flow regression on `/v1/epub/from-transcript`.
+
+### Review
+
+- Pre-change baseline:
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh`
+  - `PASS` with `job_id=job_e2d1821dce2362b7`.
+- Simplified `CreateJobInput`:
+  - removed `sourceType` and `inputDurationSeconds` from `backend/src/types/domain.ts`.
+- Simplified `createJob` insert in `backend/src/repositories/jobsRepo.ts`:
+  - `source_type` now set to `'transcript'::source_type` in SQL,
+  - removed `input_duration_seconds` handling from active path insert values.
+- Simplified `jobsService` internals:
+  - `runPipelineInline` and `createAndRunJob` no longer accept generic `sourceType` plumbing,
+  - transcript source is explicit in stage metadata and artifact orchestration.
+- Post-change validation:
+  - `cd backend && npm run typecheck` passed.
+  - `BASE_URL=http://localhost:18080 ./scripts/regression-transcript-flow.sh` passed with `job_id=job_90c5f05876cecf2f`.
+  - `BASE_URL=http://localhost:18080 CREATE_PATH=/v1/epub/from-transcript ./scripts/regression-transcript-flow.sh` passed with `job_id=job_f5e39cc22de48d5d`.
+
 ## Current Task: Phase 3 reliability (provider-compatible LLM defaults) (2026-03-04)
 
 ### Plan
