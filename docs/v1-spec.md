@@ -9,6 +9,7 @@ Related docs:
 - `docs/booklet-template-contract.v1.md` (canonical booklet structure contract for EPUB/PDF/Markdown)
 - `docs/booklet-template-content.v1.md` (copy-ready content scaffold)
 - `docs/transcript-pipeline-v2.md` (semantic-first transcript understanding and generation blueprint)
+- `docs/transcript-llm-architecture-deepdive.md` (current implementation deep dive for transcript -> LLM -> artifacts)
 - `docs/db-schema.v1.sql` (PostgreSQL schema draft)
 - `docs/job-state-machine.md` (backend job lifecycle contract)
 
