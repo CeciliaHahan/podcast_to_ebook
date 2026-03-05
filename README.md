@@ -70,7 +70,7 @@ What you get:
 - live stage timeline (`transcript`, `normalization`, `llm_request`, `llm_response`, etc.)
 - final EPUB + Markdown result panel
 - shareable debug state in URL query:
-  - `method=A|B|C`
+  - `method=C`
   - `sample=<sample_id>`
 
 Local sample files live in:

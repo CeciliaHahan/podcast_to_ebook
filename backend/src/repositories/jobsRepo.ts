@@ -2551,7 +2551,7 @@ async function buildBookletModel(params: {
     tldr: normalizeModelTldr(baseModel.tldr, baseModel.chapters, sourceProfile.sourceProfile, topKeywords),
   };
 
-  const method = params.generationMethod ?? "B";
+  const method = params.generationMethod ?? "C";
   if (method === "A") {
     const methodAQualityIssues = countModelQualityIssues(normalizedBaseModel);
     const methodAQualityGate = isQualityGatePassed(methodAQualityIssues);

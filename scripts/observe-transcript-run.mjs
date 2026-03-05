@@ -737,8 +737,6 @@ function buildHtmlPage() {
           <div>
             <label for="methodSelect">Generation Method</label>
             <select id="methodSelect">
-              <option value="B">Method B</option>
-              <option value="A">Method A</option>
               <option value="C">Method C</option>
             </select>
           </div>
@@ -798,8 +796,7 @@ function buildHtmlPage() {
       const flowOrder = ["transcript", "normalization", "llm_request", "llm_response", "pdf", "render"];
       const queryParams = new URLSearchParams(window.location.search);
       const initialSampleId = queryParams.get("sample") || "";
-      const methodCandidate = String(queryParams.get("method") || "B").toUpperCase();
-      const initialMethod = methodCandidate === "A" || methodCandidate === "C" ? methodCandidate : "B";
+      const initialMethod = "C";
 
       const state = {
         samples: [],
@@ -1143,7 +1140,7 @@ async function main() {
       if (req.method === "POST" && url.pathname === "/api/runs") {
         const body = await readRequestJson(req);
         const sampleId = typeof body.sample_id === "string" ? body.sample_id : "";
-        const generationMethod = body.generation_method === "A" || body.generation_method === "C" ? body.generation_method : "B";
+        const generationMethod = "C";
         const sample = await resolveSampleTranscript(cfg, sampleId);
         if (!sample.transcript_text || sample.transcript_text.length < 20) {
           jsonResponse(res, 400, { error: "Sample transcript is too short." });

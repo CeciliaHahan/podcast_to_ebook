@@ -55,11 +55,8 @@ function sanitizeArtifactTitle(input: string | undefined, fallback = "Podcast No
   return clean || fallback;
 }
 
-function readGenerationMethod(value: unknown): GenerationMethod {
-  if (value === "A" || value === "B" || value === "C") {
-    return value;
-  }
-  return "B";
+function readGenerationMethod(_value: unknown): GenerationMethod {
+  return "C";
 }
 
 async function runPipelineInline(params: {
