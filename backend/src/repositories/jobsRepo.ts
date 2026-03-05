@@ -891,7 +891,7 @@ function isGreetingLikeTitle(input: string): boolean {
 }
 
 function createProfileFallbackTitle(profile: TranscriptSourceProfile, keywords: string[]): string {
-  const picks = keywords.filter((keyword) => keyword.length >= 2).slice(0, 3);
+  const picks = pickHighSignalTitleKeywords(keywords, 3);
   if (profile === "discussion" && picks.length) {
     return `圆桌讨论：${picks.join(" / ")}`;
   }
@@ -910,6 +910,28 @@ function createProfileFallbackTitle(profile: TranscriptSourceProfile, keywords: 
   return "主题笔记";
 }
 
+function isLowInformationTitle(input: string): boolean {
+  const normalized = cleanLine(input)
+    .replace(/^圆桌讨论[：:]\s*/i, "")
+    .replace(/^访谈纪要[：:]\s*/i, "")
+    .replace(/^主题笔记[：:]\s*/i, "");
+  const tokens = normalized
+    .split(/[\/|、,，\s]+/)
+    .map((token) => normalizeTopicKeywordToken(token))
+    .filter(Boolean);
+  if (!tokens.length) {
+    return true;
+  }
+  const highSignal = tokens.filter((token) => !isLowSignalTitleKeyword(token));
+  if (!highSignal.length) {
+    return true;
+  }
+  if (tokens.length >= 2 && highSignal.length <= 1 && normalized.length <= 24) {
+    return true;
+  }
+  return false;
+}
+
 function resolveBookletTitle(rawTitle: string, profile: TranscriptSourceProfile, keywords: string[]): string {
   const cleaned = cleanLine(rawTitle).replace(/[\\*_`~]/g, "").trim();
   if (!cleaned) {
@@ -918,10 +940,13 @@ function resolveBookletTitle(rawTitle: string, profile: TranscriptSourceProfile,
   if (cleaned.length > 42) {
     return createProfileFallbackTitle(profile, keywords);
   }
-  if (cleaned.length > 20 && isGreetingLikeTitle(cleaned)) {
+  if (isGreetingLikeTitle(cleaned)) {
     return createProfileFallbackTitle(profile, keywords);
   }
   if (/[，。！？?!]/.test(cleaned) && cleaned.length > 28) {
+    return createProfileFallbackTitle(profile, keywords);
+  }
+  if (isLowInformationTitle(cleaned)) {
     return createProfileFallbackTitle(profile, keywords);
   }
   return cleaned;
@@ -1268,6 +1293,311 @@ const DISCOURSE_FILLERS = new Set([
 ]);
 
 const GENERIC_DECLARED_KEYWORDS = new Set(["世界", "电影", "故事", "时代", "身份", "人类", "节目", "文化"]);
+const GENERIC_TITLE_KEYWORDS = new Set([
+  ...GENERIC_DECLARED_KEYWORDS,
+  "问题",
+  "事情",
+  "这件事",
+  "这件事情",
+  "件事情",
+  "东西",
+  "内容",
+  "讨论",
+  "观点",
+  "结论",
+  "目录",
+  "议题",
+  "交媒体",
+]);
+
+const TITLE_NOISE_PHRASES = new Set([
+  "好莱坞它",
+  "没有办法",
+  "没办法",
+  "没有可能",
+  "这件事",
+  "这件事情",
+  "件事情",
+  "这个事情",
+  "那个事情",
+  "交媒体",
+]);
+
+const TITLE_LEADING_NOISE = [
+  "关于",
+  "对于",
+  "如果",
+  "但是",
+  "而且",
+  "并且",
+  "然后",
+  "其实",
+  "就是",
+  "因为",
+  "所以",
+  "还是",
+  "这个",
+  "那个",
+  "这种",
+  "那种",
+  "我们",
+  "你们",
+  "他们",
+];
+
+const TITLE_TRAILING_NOISE = [
+  "这个",
+  "那个",
+  "这样",
+  "那样",
+  "我们",
+  "你们",
+  "他们",
+  "它们",
+  "自己",
+  "一下",
+  "出来",
+  "进去",
+  "可以",
+  "应该",
+  "需要",
+  "没有",
+  "办法",
+  "其实",
+  "就是",
+  "然后",
+  "事情",
+  "东西",
+  "内容",
+];
+
+const TITLE_EDGE_NOISE_CHARS = new Set([
+  "们",
+  "个",
+  "些",
+  "这",
+  "那",
+  "其",
+  "的",
+  "了",
+  "得",
+  "地",
+  "在",
+  "与",
+  "和",
+  "就",
+  "都",
+  "还",
+  "也",
+  "被",
+  "把",
+  "有",
+  "没",
+  "不",
+  "他",
+  "她",
+  "它",
+  "你",
+  "我",
+  "吗",
+  "呢",
+  "吧",
+  "啊",
+  "呀",
+  "嘛",
+]);
+
+function trimTopicKeywordNoiseEdges(input: string): string {
+  let out = input;
+  let changed = true;
+  while (changed && out.length >= 2) {
+    changed = false;
+    for (const prefix of TITLE_LEADING_NOISE) {
+      if (out.startsWith(prefix) && out.length - prefix.length >= 2) {
+        out = out.slice(prefix.length);
+        changed = true;
+      }
+    }
+    for (const suffix of TITLE_TRAILING_NOISE) {
+      if (out.endsWith(suffix) && out.length - suffix.length >= 2) {
+        out = out.slice(0, out.length - suffix.length);
+        changed = true;
+      }
+    }
+    if (/[它他她你我吗呢吧呀啊嘛了的得]$/.test(out) && out.length >= 3) {
+      out = out.slice(0, -1);
+      changed = true;
+    }
+    const chars = Array.from(out);
+    if (chars.length >= 3 && TITLE_EDGE_NOISE_CHARS.has(chars[0] as string)) {
+      out = chars.slice(1).join("");
+      changed = true;
+    }
+    const outChars = Array.from(out);
+    if (outChars.length >= 3 && TITLE_EDGE_NOISE_CHARS.has(outChars[outChars.length - 1] as string)) {
+      out = outChars.slice(0, -1).join("");
+      changed = true;
+    }
+  }
+  return out;
+}
+
+function normalizeTopicKeywordToken(token: string): string {
+  const cleaned = cleanLine(token)
+    .replace(/[“”"']/g, "")
+    .replace(/^第\s*\d+\s*章(?:聚焦)?\s*[：:，,\-\s]*/i, "")
+    .replace(/：?\s*核心讨论$/i, "")
+    .replace(/^[^\p{Script=Han}A-Za-z0-9]+/gu, "")
+    .replace(/[^\p{Script=Han}A-Za-z0-9]+$/gu, "");
+  return trimTopicKeywordNoiseEdges(cleaned);
+}
+
+function dedupeOverlappingTopicKeywords(keywords: string[]): string[] {
+  const out: string[] = [];
+  for (const rawKeyword of keywords) {
+    const keyword = normalizeTopicKeywordToken(rawKeyword);
+    if (!keyword) {
+      continue;
+    }
+    let handled = false;
+    for (let index = 0; index < out.length; index += 1) {
+      const current = out[index] as string;
+      if (current === keyword) {
+        handled = true;
+        break;
+      }
+      if (current.length >= keyword.length + 1 && current.includes(keyword)) {
+        handled = true;
+        break;
+      }
+      if (keyword.length >= current.length + 1 && keyword.includes(current)) {
+        out[index] = keyword;
+        handled = true;
+        break;
+      }
+    }
+    if (!handled) {
+      out.push(keyword);
+    }
+  }
+  return uniqueNonEmpty(out);
+}
+
+function isLowSignalTitleKeyword(keyword: string): boolean {
+  const normalized = normalizeTopicKeywordToken(keyword);
+  if (!normalized || normalized.length < 2) {
+    return true;
+  }
+  if (TITLE_NOISE_PHRASES.has(normalized)) {
+    return true;
+  }
+  if (GENERIC_TITLE_KEYWORDS.has(normalized) || isLowSignalKeywordToken(normalized)) {
+    return true;
+  }
+  if (/^(没有|没法|无法|可以|应该|需要|觉得|希望|想要)/.test(normalized)) {
+    return true;
+  }
+  if (/^(没有办|没办法|应该|可以|需要|不是|就是|其实|然后)$/.test(normalized)) {
+    return true;
+  }
+  if (/^(些|把|将|让)/.test(normalized)) {
+    return true;
+  }
+  if (/(转|成|做|说|看|想|要|会|能|该)$/.test(normalized)) {
+    return true;
+  }
+  if (/^(这个|那个|这种|那种)/.test(normalized) && normalized.length <= 4) {
+    return true;
+  }
+  if (/(办法|事情|东西|内容|问题)$/.test(normalized) && normalized.length <= 4) {
+    return true;
+  }
+  if (/[它他她你我其]$/.test(normalized)) {
+    return true;
+  }
+  if (/^(第\d+章|核心讨论|主题\d+)$/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function defaultDiscussionFallbackTitle(index: number, preferredKeywords: string[]): { title: string; topicKeywords: string[] } {
+  const safePreferred = dedupeOverlappingTopicKeywords(preferredKeywords)
+    .filter((keyword) => !isLowSignalTitleKeyword(keyword))
+    .slice(0, 1);
+  if (safePreferred.length) {
+    return { title: `${safePreferred[0]}：延展讨论`, topicKeywords: safePreferred };
+  }
+  return { title: `核心讨论 ${index}`, topicKeywords: [] };
+}
+
+function isRelatedToPreferredKeyword(candidate: string, preferredKeywords: string[]): boolean {
+  const normalizedCandidate = normalizeTopicKeywordToken(candidate);
+  if (!normalizedCandidate) {
+    return false;
+  }
+  return preferredKeywords.some((keyword) => {
+    const normalized = normalizeTopicKeywordToken(keyword);
+    if (!normalized) {
+      return false;
+    }
+    return normalizedCandidate.includes(normalized) || normalized.includes(normalizedCandidate);
+  });
+}
+
+function pickHighSignalTitleKeywords(keywords: string[], count: number): string[] {
+  return dedupeOverlappingTopicKeywords(keywords)
+    .filter((keyword) => !isLowSignalTitleKeyword(keyword))
+    .slice(0, count);
+}
+
+function splitTopicKeywordHints(input: string): string[] {
+  return cleanLine(input)
+    .split(/[\/|、,，;；：:\s]+/)
+    .map((part) => normalizeTopicKeywordToken(part))
+    .filter((part) => part.length >= 2);
+}
+
+function canonicalizeTopicKeywordWithHints(keyword: string, hintKeywords: string[]): string {
+  const normalized = normalizeTopicKeywordToken(keyword);
+  if (!normalized) {
+    return "";
+  }
+
+  const hints = dedupeOverlappingTopicKeywords(hintKeywords)
+    .map((hint) => normalizeTopicKeywordToken(hint))
+    .filter((hint) => hint.length >= 2)
+    .filter((hint) => !isLowSignalTitleKeyword(hint));
+  if (!hints.length) {
+    return normalized;
+  }
+  if (hints.includes(normalized)) {
+    return normalized;
+  }
+
+  const containerHint = hints
+    .filter((hint) => hint.length >= normalized.length + 1 && hint.includes(normalized))
+    .sort((a, b) => a.length - b.length)[0];
+  if (containerHint && containerHint.length <= normalized.length + 2) {
+    return containerHint;
+  }
+
+  const containedHint = hints
+    .filter((hint) => normalized.length >= hint.length + 1 && normalized.includes(hint) && hint.length >= 3)
+    .sort((a, b) => b.length - a.length)[0];
+  if (containedHint && normalized.length <= containedHint.length + 1) {
+    return containedHint;
+  }
+  return normalized;
+}
+
+function normalizeTopicKeywordListWithHints(keywords: string[], hintKeywords: string[]): string[] {
+  return dedupeOverlappingTopicKeywords(
+    keywords
+      .map((keyword) => canonicalizeTopicKeywordWithHints(keyword, hintKeywords))
+      .filter(Boolean),
+  ).filter((keyword) => !isLowSignalKeywordToken(keyword));
+}
 
 function normalizeSpeaker(raw: string): string {
   const normalized = cleanLine(raw.replace(/[：:]+$/, ""));
@@ -1360,7 +1690,7 @@ function extractDeclaredKeywords(input: string): string[] {
     match[1]
       .replace(/\s+/g, " ")
       .split(/[、,，;；|/]/)
-      .map((part) => cleanLine(part))
+      .map((part) => normalizeTopicKeywordToken(part))
       .filter((part) => part.length >= 2)
       .filter((part) => !isLowSignalKeywordToken(part)),
   );
@@ -1389,6 +1719,9 @@ function isLowSignalKeywordToken(token: string): boolean {
     return true;
   }
   if (/^([\u4e00-\u9fffA-Za-z])\1{2,}$/.test(normalized)) {
+    return true;
+  }
+  if (/^(交媒体|件事情|这件事情|那个事情|这个事情)$/.test(normalized)) {
     return true;
   }
   if (
@@ -1683,11 +2016,14 @@ function chapterTitleFromChunk(
   preferredKeywords: string[],
 ): { title: string; topicKeywords: string[] } {
   const chunkText = chunk.map((entry) => entry.text).join(" ");
-  const preferredHits = preferredKeywords
-    .map((keyword) => ({ keyword, score: keywordFrequency(chunkText, keyword) }))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || b.keyword.length - a.keyword.length)
-    .map((item) => item.keyword)
+  const preferredHits = dedupeOverlappingTopicKeywords(
+    preferredKeywords
+      .map((keyword) => ({ keyword: normalizeTopicKeywordToken(keyword), score: keywordFrequency(chunkText, keyword) }))
+      .filter((item) => item.keyword && item.score > 0)
+      .sort((a, b) => b.score - a.score || b.keyword.length - a.keyword.length)
+      .map((item) => item.keyword),
+  )
+    .filter((keyword) => !isLowSignalTitleKeyword(keyword))
     .slice(0, 3);
   if (preferredHits.length >= 2) {
     return { title: preferredHits.slice(0, 2).join(" / "), topicKeywords: preferredHits };
@@ -1696,11 +2032,12 @@ function chapterTitleFromChunk(
     return { title: `${preferredHits[0]}：核心讨论`, topicKeywords: preferredHits };
   }
 
-  const keywords = topicFocusKeywords(extractKeywords(chunkText), 3);
+  const keywords = dedupeOverlappingTopicKeywords(topicFocusKeywords(extractKeywords(chunkText), 6))
+    .filter((keyword) => !isLowSignalTitleKeyword(keyword))
+    .filter((keyword) => isRelatedToPreferredKeyword(keyword, preferredKeywords))
+    .slice(0, 3);
   if (!keywords.length) {
-    const fallback = sanitizeSentence(chunk[0]?.text ?? "");
-    const fallbackTitle = fallback ? shorten(fallback, 18) : `核心讨论 ${index}`;
-    return { title: fallbackTitle, topicKeywords: [] };
+    return defaultDiscussionFallbackTitle(index, preferredKeywords);
   }
   if (keywords.length === 1) {
     return { title: `${keywords[0]}：核心讨论`, topicKeywords: keywords };
@@ -1830,7 +2167,9 @@ function chapterExplanationFromPoints(title: string, points: string[]): BookletC
 }
 
 function topicFocusKeywords(keywords: string[], count: number): string[] {
-  return uniqueNonEmpty(keywords.filter((keyword) => !isLowSignalKeywordToken(keyword))).slice(0, count);
+  return dedupeOverlappingTopicKeywords(keywords)
+    .filter((keyword) => !isLowSignalKeywordToken(keyword))
+    .slice(0, count);
 }
 
 function buildSuitableFor(topics: string[]): string[] {
@@ -1856,8 +2195,10 @@ function findTermEvidenceSnippet(term: string, chapters: BookletChapter[]): stri
   return "";
 }
 
-function buildTermsFromKeywords(keywords: string[], chapters: BookletChapter[]): BookletTerm[] {
-  const topicTerms = topicFocusKeywords(keywords, 6);
+function buildTermsFromKeywords(keywords: string[], chapters: BookletChapter[], hintKeywords: string[] = []): BookletTerm[] {
+  const chapterTopicHints = dedupeOverlappingTopicKeywords(chapters.flatMap((chapter) => splitTopicKeywordHints(chapter.title)));
+  const normalizedKeywords = normalizeTopicKeywordListWithHints(keywords, [...hintKeywords, ...chapterTopicHints]);
+  const topicTerms = topicFocusKeywords(normalizedKeywords, 6);
   if (!topicTerms.length) {
     return fillToCount(
       [],
@@ -2145,8 +2486,10 @@ async function buildBookletModel(params: {
   });
 
   const keywordSource = entries.map((entry) => entry.text).join("\n") || transcriptBody;
+  const anchorKeywords = topicFocusKeywords([...chapterTitleKeywords, ...rankedDeclaredKeywords], 8);
+  const discoveredKeywords = topicFocusKeywords(extractKeywords(keywordSource), 10);
   const topKeywords = topicFocusKeywords(
-    [...chapterTitleKeywords, ...rankedDeclaredKeywords, ...extractKeywords(keywordSource)],
+    normalizeTopicKeywordListWithHints([...anchorKeywords, ...discoveredKeywords], anchorKeywords),
     6,
   );
   const focusKeywords = topicFocusKeywords(topKeywords, 3);
@@ -2157,7 +2500,7 @@ async function buildBookletModel(params: {
     uniqueNonEmpty([...rankedDeclaredKeywords, ...topKeywords]),
   );
   const tldr = buildTldrFromChapters(chapters, sourceProfile.sourceProfile, topKeywords);
-  const terms = buildTermsFromKeywords(topKeywords, chapters);
+  const terms = buildTermsFromKeywords(topKeywords, chapters, anchorKeywords);
 
   const generatedAtIso = new Date().toISOString();
   const generatedDate = generatedAtIso.slice(0, 10);
@@ -2415,6 +2758,10 @@ async function buildBookletModel(params: {
   };
   const finalQualityIssues = countModelQualityIssues(finalModel);
   const finalQualityGate = isQualityGatePassed(finalQualityIssues);
+  const renderLayoutPreview = buildRenderChapterViews(finalModel);
+  const discussionBodyStartCoverage = renderLayoutPreview.isDiscussion
+    ? estimateDiscussionBodyStartCoverage(finalModel.chapters, renderLayoutPreview.frontMatterChapters.length)
+    : null;
   pushInspectorStage(params.inspector, {
     stage: "normalization",
     input: {
@@ -2431,6 +2778,11 @@ async function buildBookletModel(params: {
       chapter_titles: finalModel.chapters.map((chapter) => chapter.title),
       tldr_count: finalModel.tldr.length,
       terms_count: finalModel.terms.length,
+      render_front_count: renderLayoutPreview.frontMatterChapters.length,
+      render_body_count: renderLayoutPreview.bodyChapters.length,
+      render_first_body_range: renderLayoutPreview.bodyChapters[0]?.chapter.range ?? null,
+      render_body_start_coverage_ratio:
+        discussionBodyStartCoverage == null ? null : Number(discussionBodyStartCoverage.toFixed(3)),
       quality_issue_count: finalQualityIssues.length,
       quality_warning_count: finalQualityGate.warningCount,
       quality_blocking_count: finalQualityGate.blockingIssues.length,
@@ -2450,6 +2802,11 @@ async function buildBookletModel(params: {
         warning_max: QUALITY_GATE_WARNING_MAX,
         status: finalQualityGate.passed ? "passed" : "failed",
       },
+      render_layout_guard: {
+        discussion_max_front_matter_chapters: DISCUSSION_MAX_FRONT_MATTER_CHAPTERS,
+        discussion_min_body_chapters: DISCUSSION_MIN_BODY_CHAPTERS,
+        discussion_max_body_start_coverage: DISCUSSION_MAX_BODY_START_COVERAGE,
+      },
     },
     notes: finalQualityGate.passed ? "Quality gate passed." : "Quality gate failed.",
   });
@@ -2462,20 +2819,47 @@ type RenderChapterView = {
   displaySectionId: string;
 };
 
+const DISCUSSION_MAX_FRONT_MATTER_CHAPTERS = 2;
+const DISCUSSION_MIN_BODY_CHAPTERS = 3;
+const DISCUSSION_MAX_BODY_START_COVERAGE = 0.35;
+
 function chapterRangeStartSeconds(range: string): number | null {
   const start = cleanLine(String(range || "").split("-")[0] ?? "");
   return parseTimestampToSeconds(start);
+}
+
+function chapterRangeEndSeconds(range: string): number | null {
+  const parts = String(range || "").split("-");
+  const end = cleanLine(parts[1] ?? parts[0] ?? "");
+  return parseTimestampToSeconds(end);
+}
+
+function estimateDiscussionBodyStartCoverage(chapters: BookletChapter[], frontCount: number): number | null {
+  if (!chapters.length || frontCount < 0 || frontCount >= chapters.length) {
+    return null;
+  }
+  const allStart = chapterRangeStartSeconds(chapters[0]?.range ?? "");
+  const allEnd = chapterRangeEndSeconds(chapters[chapters.length - 1]?.range ?? "");
+  const bodyStart = chapterRangeStartSeconds(chapters[frontCount]?.range ?? "");
+  if (allStart == null || allEnd == null || bodyStart == null) {
+    return null;
+  }
+  const total = allEnd - allStart;
+  if (!Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+  const covered = bodyStart - allStart;
+  if (!Number.isFinite(covered) || covered < 0) {
+    return null;
+  }
+  return Math.min(1, covered / total);
 }
 
 function isLikelyDiscussionFrontMatterChapter(chapter: BookletChapter): boolean {
   const textBlob = cleanLine(
     [chapter.title, ...chapter.points.slice(0, 2), chapter.explanation.background, chapter.explanation.coreConcept].join(" "),
   );
-  if (/(开场|导语|背景设定|问题设定|讨论框架|争议轴|本期要聊|先说)/.test(textBlob)) {
-    return true;
-  }
-  const startSeconds = chapterRangeStartSeconds(chapter.range);
-  if (typeof startSeconds === "number" && startSeconds <= 45 * 60) {
+  if (/(开场|导语|背景设定|问题设定|讨论框架|争议轴|本期要聊|先说|先聊|近况|update|自我介绍|寒暄|铺垫)/i.test(textBlob)) {
     return true;
   }
   return false;
@@ -2510,6 +2894,19 @@ function buildRenderChapterViews(model: BookletModel): {
     }
     frontCount += 1;
   }
+  const minBodyChapters = Math.min(model.chapters.length, DISCUSSION_MIN_BODY_CHAPTERS);
+  const maxFrontByBody = Math.max(0, model.chapters.length - minBodyChapters);
+  frontCount = Math.min(frontCount, DISCUSSION_MAX_FRONT_MATTER_CHAPTERS, maxFrontByBody);
+
+  while (frontCount > 0) {
+    const coverage = estimateDiscussionBodyStartCoverage(model.chapters, frontCount);
+    if (coverage != null && coverage > DISCUSSION_MAX_BODY_START_COVERAGE) {
+      frontCount -= 1;
+      continue;
+    }
+    break;
+  }
+
   const frontMatterChapters = model.chapters.slice(0, frontCount);
   const bodyChapters = model.chapters.slice(frontCount).map((chapter, index) => ({
     chapter,
@@ -2517,6 +2914,23 @@ function buildRenderChapterViews(model: BookletModel): {
     displaySectionId: `chap_${String(index + 4).padStart(2, "0")}`,
   }));
   return { isDiscussion: true, frontMatterChapters, bodyChapters };
+}
+
+type RenderChapterLayout = ReturnType<typeof buildRenderChapterViews>;
+
+function buildDiscussionMapItems(layout: RenderChapterLayout): RenderChapterView[] {
+  if (layout.bodyChapters.length) {
+    return layout.bodyChapters;
+  }
+  return layout.frontMatterChapters.map((chapter, index) => ({
+    chapter,
+    displayIndex: index + 1,
+    displaySectionId: chapter.sectionId,
+  }));
+}
+
+function buildDiscussionMapLines(items: RenderChapterView[]): string[] {
+  return uniqueNonEmpty(items.map((item) => `${item.chapter.title}（${item.chapter.range}）`).filter(Boolean));
 }
 
 function buildJudgmentFrameworkItems(chapter: BookletChapter): string[] {
@@ -2529,6 +2943,34 @@ function buildJudgmentFrameworkItems(chapter: BookletChapter): string[] {
     chapter.explanation.commonMisunderstanding && `避免误读：${chapter.explanation.commonMisunderstanding}`,
   ].filter((item): item is string => Boolean(item));
   return uniqueNonEmpty([...derived, ...explanationBased]).slice(0, 4);
+}
+
+function buildDiscussionConsensusAndOpenItems(chapter: BookletChapter): string[] {
+  return uniqueNonEmpty([
+    `当前最小共识：${chapter.points[0] ?? chapter.explanation.background}`,
+    `主要分歧：${chapter.explanation.coreConcept}`,
+    `判断边界：${chapter.explanation.judgmentFramework}`,
+    `仍待验证：${chapter.explanation.commonMisunderstanding}`,
+  ]);
+}
+
+function buildDiscussionFollowupActions(chapter: BookletChapter): string[] {
+  const directActions = uniqueNonEmpty(chapter.actions.map((action) => cleanLine(action)).filter(Boolean));
+  if (directActions.length) {
+    return directActions;
+  }
+  const fallback = buildJudgmentFrameworkItems(chapter).map((item) => cleanLine(item.replace(/^判断是否成立：/, "验证动作：")));
+  return fallback.length ? fallback : ["从本章争议里选 1 个命题，补齐证据后再做判断。"];
+}
+
+function buildDiscussionOpenQuestionLines(bodyChapters: RenderChapterView[], model: BookletModel): string[] {
+  const bodyDriven = uniqueNonEmpty(
+    bodyChapters.flatMap((item) => item.chapter.actions.map((action) => cleanLine(action))).filter(Boolean),
+  );
+  if (bodyDriven.length) {
+    return bodyDriven;
+  }
+  return uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong].map((line) => cleanLine(line)).filter(Boolean));
 }
 
 function buildMarkdownContent(model: BookletModel): string {
@@ -2545,19 +2987,15 @@ function buildMarkdownContent(model: BookletModel): string {
   ];
 
   if (layout.isDiscussion) {
-    const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
-      chapter,
-      displayIndex: index + 1,
-      displaySectionId: chapter.sectionId,
-    }));
+    const discussionMapItems = buildDiscussionMapItems(layout);
+    const discussionMapLines = buildDiscussionMapLines(discussionMapItems);
     const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
+    const discussionOpenQuestions = buildDiscussionOpenQuestionLines(layout.bodyChapters, model);
 
     lines.push("## 讨论地图");
     lines.push("");
-    if (discussionMapItems.length) {
-      discussionMapItems.forEach((item, index) => {
-        lines.push(`### 议题 ${index + 1}：${item.chapter.title}`);
-      });
+    if (discussionMapLines.length) {
+      lines.push(...discussionMapLines.map((line) => `- ${line}`));
     } else {
       lines.push(`> ${model.oneLineConclusion}`);
     }
@@ -2573,33 +3011,30 @@ function buildMarkdownContent(model: BookletModel): string {
       const chapter = item.chapter;
       lines.push(`## 第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
       lines.push("");
-      lines.push("### 本章争议问题");
+      lines.push("### 争议命题");
       lines.push(`- ${chapter.title}（${chapter.range}）`);
       lines.push("");
-      lines.push("### 立场对照");
+      lines.push("### 观点分歧（谁在主张什么）");
       lines.push(...chapter.points.map((point) => `- ${point}`));
       lines.push("");
-      lines.push("### 关键引用（带时间戳）");
+      lines.push("### 证据锚点（原句 + 时间戳）");
       lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
       lines.push("");
-      lines.push("### 分歧拆解");
-      lines.push(`- 争议背景：${chapter.explanation.background}`);
-      lines.push(`- 核心分歧：${chapter.explanation.coreConcept}`);
-      lines.push(`- 判断边界：${chapter.explanation.judgmentFramework}`);
-      lines.push(`- 常见误读：${chapter.explanation.commonMisunderstanding}`);
+      lines.push("### 共识与未决");
+      lines.push(...buildDiscussionConsensusAndOpenItems(chapter).map((itemLine) => `- ${itemLine}`));
       lines.push("");
-      lines.push("### 判断框架（读者自检）");
-      lines.push(...buildJudgmentFrameworkItems(chapter).map((itemLine) => `- ${itemLine}`));
+      lines.push("### 讨论后可验证动作");
+      lines.push(...buildDiscussionFollowupActions(chapter).map((itemLine) => `- ${itemLine}`));
       lines.push("");
     }
 
     lines.push("## 共识清单与未决问题");
     lines.push("");
     lines.push("### 当前共识");
-    lines.push(...discussionSummaryLines.slice(0, 3).map((item) => `- ${item}`));
+    lines.push(...discussionSummaryLines.map((item) => `- ${item}`));
     lines.push("");
     lines.push("### 仍待讨论");
-    lines.push(...uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6).map((item) => `- ${item}`));
+    lines.push(...discussionOpenQuestions.map((item) => `- ${item}`));
     lines.push("");
   } else {
     lines.push("## 读前速览");
@@ -2713,12 +3148,10 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
     const layout = buildRenderChapterViews(model);
 
     if (layout.isDiscussion) {
-      const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
-        chapter,
-        displayIndex: index + 1,
-        displaySectionId: chapter.sectionId,
-      }));
+      const discussionMapItems = buildDiscussionMapItems(layout);
+      const discussionMapLines = buildDiscussionMapLines(discussionMapItems);
       const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
+      const discussionOpenQuestions = buildDiscussionOpenQuestionLines(layout.bodyChapters, model);
 
       beginSection("讨论地图");
       doc.fontSize(20).text(model.meta.title);
@@ -2728,11 +3161,8 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       doc.fontSize(10).text(`Source: ${model.meta.sourceRef}`);
       doc.fontSize(10).text(`Template: ${model.meta.renderTemplate}`);
       doc.moveDown(0.6);
-      if (discussionMapItems.length) {
-        writePdfBulletList(
-          doc,
-          discussionMapItems.map((item, index) => `议题 ${index + 1}：${item.chapter.title}`),
-        );
+      if (discussionMapLines.length) {
+        writePdfBulletList(doc, discussionMapLines);
       } else {
         doc.fontSize(11).text(model.oneLineConclusion);
       }
@@ -2752,28 +3182,23 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       for (const item of layout.bodyChapters) {
         const chapter = item.chapter;
         beginSection(`第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
-        doc.fontSize(13).text("本章争议问题");
+        doc.fontSize(13).text("争议命题");
         writePdfBulletList(doc, [`${chapter.title}（${chapter.range}）`]);
-        doc.fontSize(13).text("立场对照");
+        doc.fontSize(13).text("观点分歧（谁在主张什么）");
         writePdfBulletList(doc, chapter.points);
-        doc.fontSize(13).text("关键引用（带时间戳）");
+        doc.fontSize(13).text("证据锚点（原句 + 时间戳）");
         writePdfQuoteList(doc, chapter.quotes);
-        doc.fontSize(13).text("分歧拆解");
-        writePdfBulletList(doc, [
-          `争议背景：${chapter.explanation.background}`,
-          `核心分歧：${chapter.explanation.coreConcept}`,
-          `判断边界：${chapter.explanation.judgmentFramework}`,
-          `常见误读：${chapter.explanation.commonMisunderstanding}`,
-        ]);
-        doc.fontSize(13).text("判断框架（读者自检）");
-        writePdfBulletList(doc, buildJudgmentFrameworkItems(chapter));
+        doc.fontSize(13).text("共识与未决");
+        writePdfBulletList(doc, buildDiscussionConsensusAndOpenItems(chapter));
+        doc.fontSize(13).text("讨论后可验证动作");
+        writePdfBulletList(doc, buildDiscussionFollowupActions(chapter));
       }
 
       beginSection("共识清单与未决问题");
       doc.fontSize(13).text("当前共识");
-      writePdfBulletList(doc, discussionSummaryLines.slice(0, 3));
+      writePdfBulletList(doc, discussionSummaryLines);
       doc.fontSize(13).text("仍待讨论");
-      writePdfBulletList(doc, uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6));
+      writePdfBulletList(doc, discussionOpenQuestions);
     } else {
       beginSection("读前速览");
       doc.fontSize(20).text(model.meta.title);
@@ -2872,21 +3297,17 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
   const layout = buildRenderChapterViews(model);
 
   if (layout.isDiscussion) {
-    const discussionMapItems = layout.bodyChapters.length ? layout.bodyChapters : layout.frontMatterChapters.map((chapter, index) => ({
-      chapter,
-      displayIndex: index + 1,
-      displaySectionId: chapter.sectionId,
-    }));
+    const discussionMapItems = buildDiscussionMapItems(layout);
+    const discussionMapLines = buildDiscussionMapLines(discussionMapItems);
     const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
+    const discussionOpenQuestions = buildDiscussionOpenQuestionLines(layout.bodyChapters, model);
 
     files.push({
       id: "chap_01",
       fileName: "chap_01.xhtml",
       title: "讨论地图",
-      bodyHtml: discussionMapItems.length
-        ? discussionMapItems
-            .map((item, index) => `<h3>议题 ${index + 1}：${escapeHtml(item.chapter.title)}</h3>`)
-            .join("")
+      bodyHtml: discussionMapLines.length
+        ? listToHtml(discussionMapLines)
         : `<blockquote>${escapeHtml(model.oneLineConclusion)}</blockquote>`,
     });
     files.push({
@@ -2911,21 +3332,16 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
         fileName: `${item.displaySectionId}.xhtml`,
         title: `第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`,
         bodyHtml: [
-          "<h3>本章争议问题</h3>",
+          "<h3>争议命题</h3>",
           listToHtml([`${chapter.title}（${chapter.range}）`]),
-          "<h3>立场对照</h3>",
+          "<h3>观点分歧（谁在主张什么）</h3>",
           listToHtml(chapter.points),
-          "<h3>关键引用（带时间戳）</h3>",
+          "<h3>证据锚点（原句 + 时间戳）</h3>",
           quoteListToHtml(chapter.quotes),
-          "<h3>分歧拆解</h3>",
-          listToHtml([
-            `争议背景：${chapter.explanation.background}`,
-            `核心分歧：${chapter.explanation.coreConcept}`,
-            `判断边界：${chapter.explanation.judgmentFramework}`,
-            `常见误读：${chapter.explanation.commonMisunderstanding}`,
-          ]),
-          "<h3>判断框架（读者自检）</h3>",
-          listToHtml(buildJudgmentFrameworkItems(chapter)),
+          "<h3>共识与未决</h3>",
+          listToHtml(buildDiscussionConsensusAndOpenItems(chapter)),
+          "<h3>讨论后可验证动作</h3>",
+          listToHtml(buildDiscussionFollowupActions(chapter)),
         ].join(""),
       });
     }
@@ -2936,9 +3352,9 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
       title: "共识清单与未决问题",
       bodyHtml: [
         "<h3>当前共识</h3>",
-        listToHtml(discussionSummaryLines.slice(0, 3)),
+        listToHtml(discussionSummaryLines),
         "<h3>仍待讨论</h3>",
-        listToHtml(uniqueNonEmpty([...model.actionNow, ...model.actionWeek, ...model.actionLong]).slice(0, 6)),
+        listToHtml(discussionOpenQuestions),
       ].join(""),
     });
   } else {
