@@ -276,47 +276,10 @@ async function backendJson(cfg, pathName, options = {}) {
   return payload;
 }
 
-async function loadHistorySamples(cfg, limit = 12) {
-  try {
-    const payload = await backendJson(cfg, `/v1/dev/transcript-samples?limit=${limit}`);
-    const rows = Array.isArray(payload?.samples) ? payload.samples : [];
-    return rows
-      .filter((row) => row && typeof row === "object" && typeof row.job_id === "string")
-      .map((row) => ({
-        id: `history:${row.job_id}`,
-        source: "history",
-        job_id: row.job_id,
-        title: String(row.title ?? "History Sample"),
-        language: String(row.language ?? "zh-CN"),
-        created_at: String(row.created_at ?? ""),
-        char_count: Number(row.char_count ?? 0),
-        preview: String(row.preview ?? ""),
-      }));
-  } catch (error) {
-    return {
-      samples: [],
-      error: normalizeError(error),
-    };
-  }
-}
-
 async function resolveSampleTranscript(cfg, sampleId) {
   if (!sampleId || typeof sampleId !== "string") {
     throw new Error("sample_id is required.");
   }
-  if (sampleId.startsWith("history:")) {
-    const jobId = sampleId.slice("history:".length);
-    const payload = await backendJson(cfg, `/v1/dev/transcript-samples/${encodeURIComponent(jobId)}`);
-    const sample = payload?.sample ?? {};
-    return {
-      sample_id: sampleId,
-      title: String(sample.title ?? `History ${jobId}`),
-      language: String(sample.language ?? "zh-CN"),
-      transcript_text: String(sample.transcript_text ?? ""),
-      char_count: Number(sample.char_count ?? 0),
-    };
-  }
-
   const localSamples = await loadLocalSamples(cfg.sampleDir);
   const dataSamples = await loadDataSamples(cfg.dataSampleDir);
   const hit = [...localSamples, ...dataSamples].find((item) => item.id === sampleId);
@@ -1113,16 +1076,8 @@ async function main() {
       if (req.method === "GET" && url.pathname === "/api/samples") {
         const localSamples = await loadLocalSamples(cfg.sampleDir);
         const dataSamples = await loadDataSamples(cfg.dataSampleDir);
-        const history = await loadHistorySamples(cfg, 15);
-        if (Array.isArray(history)) {
-          jsonResponse(res, 200, {
-            samples: [...dataSamples, ...localSamples, ...history],
-          });
-          return;
-        }
         jsonResponse(res, 200, {
           samples: [...dataSamples, ...localSamples],
-          history_error: history.error,
         });
         return;
       }
@@ -1155,7 +1110,6 @@ async function main() {
           language: sample.language || "zh-CN",
           transcript_text: sample.transcript_text,
           template_id: "templateA-v0-book",
-          output_formats: ["epub", "md"],
           metadata: {
             episode_url: `local://observe/${Date.now()}`,
             generation_method: generationMethod,
@@ -1167,10 +1121,25 @@ async function main() {
             no_commercial_use: true,
           },
         };
-        const createResponse = await backendJson(cfg, "/v1/jobs/from-transcript", {
+        const createResponse = await backendJson(cfg, "/v1/epub/from-transcript", {
           method: "POST",
           body: createPayload,
         });
+        let markdownText = "";
+        const mdItem = Array.isArray(createResponse.artifacts)
+          ? createResponse.artifacts.find((item) => item && item.type === "md")
+          : null;
+        const mdUrl = typeof mdItem?.download_url === "string" ? mdItem.download_url : "";
+        if (mdUrl) {
+          try {
+            const mdResponse = await fetch(mdUrl);
+            if (mdResponse.ok) {
+              markdownText = await mdResponse.text();
+            }
+          } catch {
+            markdownText = "";
+          }
+        }
         const runId = createRunId();
         const run = {
           run_id: runId,
@@ -1179,8 +1148,18 @@ async function main() {
           language: sample.language,
           sample_id: sample.sample_id,
           started_at: new Date().toISOString(),
-          markdown_text: "",
-          markdown_url: "",
+          status: {
+            status: String(createResponse.status ?? "succeeded"),
+            stage: "completed",
+          },
+          inspector: {
+            stages: Array.isArray(createResponse.stages) ? createResponse.stages : [],
+            live: false,
+          },
+          artifacts: {
+            artifacts: Array.isArray(createResponse.artifacts) ? createResponse.artifacts : [],
+          },
+          markdown_text: markdownText,
         };
         runState.runsById.set(runId, run);
         jsonResponse(res, 200, { run });
@@ -1194,37 +1173,12 @@ async function main() {
           jsonResponse(res, 404, { error: "Run not found." });
           return;
         }
-        const [status, inspector] = await Promise.all([
-          backendJson(cfg, `/v1/jobs/${encodeURIComponent(run.job_id)}`),
-          backendJson(cfg, `/v1/jobs/${encodeURIComponent(run.job_id)}/inspector`),
-        ]);
-        let artifacts = { artifacts: [] };
-        let markdownText = run.markdown_text;
-        if (status.status === "succeeded") {
-          try {
-            artifacts = await backendJson(cfg, `/v1/jobs/${encodeURIComponent(run.job_id)}/artifacts`);
-            const mdItem = Array.isArray(artifacts.artifacts)
-              ? artifacts.artifacts.find((item) => item && item.type === "md")
-              : null;
-            const mdUrl = typeof mdItem?.download_url === "string" ? mdItem.download_url : "";
-            if (mdUrl && mdUrl !== run.markdown_url) {
-              const mdResponse = await fetch(mdUrl);
-              if (mdResponse.ok) {
-                markdownText = await mdResponse.text();
-                run.markdown_text = markdownText;
-                run.markdown_url = mdUrl;
-              }
-            }
-          } catch {
-            // Keep artifacts empty if not ready yet.
-          }
-        }
         jsonResponse(res, 200, {
           run,
-          status,
-          inspector,
-          artifacts,
-          markdown_text: markdownText || "",
+          status: run.status,
+          inspector: run.inspector,
+          artifacts: run.artifacts,
+          markdown_text: run.markdown_text || "",
         });
         return;
       }
