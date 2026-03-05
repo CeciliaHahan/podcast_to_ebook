@@ -340,61 +340,401 @@ function buildHtmlPage() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Transcript to EPUB Live Lab</title>
+    <title>Transcript to EPUB Observatory</title>
     <style>
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
       :root {
-        --bg: #f6f8fc;
-        --panel: #ffffff;
-        --text: #1c2940;
-        --muted: #5a6986;
-        --border: #dce4f2;
-        --accent: #0b63db;
-        --ok: #128a3f;
-        --warn: #9b6b05;
+        --bg: #f4efe6;
+        --ink: #1b1d24;
+        --muted: #5f5a57;
+        --panel: #fffdfa;
+        --stroke: #d9ccc0;
+        --accent: #c5522b;
+        --accent-deep: #872f17;
+        --teal: #1f6d72;
+        --ok: #178a56;
+        --warn: #a36000;
+        --fail: #af2434;
+        --glow: 0 30px 60px rgba(101, 58, 25, 0.08);
       }
-      body { margin: 0; font-family: ui-sans-serif, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
-      .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
-      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
-      h1, h2, h3 { margin: 0 0 8px; }
-      .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
-      .top { display: grid; gap: 12px; grid-template-columns: 1fr; }
-      @media (min-width: 1024px) { .top { grid-template-columns: 1fr 1fr; } }
-      label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
-      select, button, input { font-size: 14px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); }
-      button { background: var(--accent); color: #fff; border: 0; cursor: pointer; }
-      button:disabled { opacity: .5; cursor: wait; }
-      textarea { width: 100%; min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
-      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
-      .meta { color: var(--muted); font-size: 12px; }
-      .status-ok { color: var(--ok); font-weight: 600; }
-      .status-warn { color: var(--warn); font-weight: 600; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Manrope", ui-sans-serif, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 500px at 5% -10%, rgba(255, 198, 150, 0.28), transparent 70%),
+          radial-gradient(1000px 480px at 100% 0%, rgba(150, 220, 220, 0.2), transparent 72%),
+          var(--bg);
+      }
+      .shell {
+        width: min(1340px, 94vw);
+        margin: 0 auto;
+        padding: 18px 0 36px;
+        display: grid;
+        gap: 14px;
+      }
+      .panel {
+        border: 1px solid var(--stroke);
+        border-radius: 20px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: var(--glow);
+      }
+      .hero { position: relative; overflow: hidden; }
+      .hero::after {
+        content: "";
+        position: absolute;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(197, 82, 43, 0.18), transparent 68%);
+        right: -220px;
+        top: -240px;
+        pointer-events: none;
+      }
+      h1, h2, h3, h4 { margin: 0; line-height: 1.1; }
+      h1 {
+        font-family: "Fraunces", serif;
+        font-size: clamp(34px, 4.6vw, 58px);
+        letter-spacing: 0.4px;
+      }
+      .hero-sub {
+        margin-top: 10px;
+        max-width: 860px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .pills {
+        margin-top: 14px;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(3, minmax(160px, 1fr));
+      }
+      .pill {
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff8f2;
+      }
+      .pill .k {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .pill .v {
+        margin-top: 6px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 13px;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1.4fr 0.5fr auto auto auto;
+        gap: 10px;
+        align-items: end;
+      }
+      label {
+        display: block;
+        margin-bottom: 7px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      select, button {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--stroke);
+        background: #fff;
+        font: inherit;
+        font-size: 14px;
+        padding: 11px 12px;
+      }
+      button {
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .btn-run {
+        color: #fff;
+        background: linear-gradient(130deg, var(--accent), #d27242);
+        border-color: transparent;
+      }
+      .btn-muted {
+        background: #fff8f2;
+      }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .meta-line {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .error {
+        margin-top: 7px;
+        color: var(--fail);
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+
+      .story-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 14px;
+      }
+      .section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .section-head h2 {
+        font-family: "Fraunces", serif;
+        font-size: 25px;
+      }
+      .section-head p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .transcript-meta {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 370px;
+        resize: vertical;
+        border-radius: 12px;
+        border: 1px solid var(--stroke);
+        background: #fffcf9;
+        padding: 12px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .result-shell {
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        background: linear-gradient(155deg, #fff7ee 0%, #fff 62%);
+        padding: 14px;
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--stroke);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+      }
+      .status-pill::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--warn);
+      }
+      .status-pill.ok::before { background: var(--ok); }
+      .status-pill.warn::before { background: var(--warn); }
+      .status-pill.fail::before { background: var(--fail); }
+      .result-summary {
+        margin-top: 11px;
+        color: var(--ink);
+        font-size: 13px;
+      }
+      .result-summary b {
+        color: var(--muted);
+      }
+      .artifact-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .artifact-links a {
+        text-decoration: none;
+        color: #fff;
+        background: var(--teal);
+        border-radius: 999px;
+        padding: 8px 13px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .preview-title {
+        margin: 14px 0 8px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+      pre {
+        margin: 0;
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fffcf9;
+        max-height: 320px;
+        overflow: auto;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+        line-height: 1.46;
+      }
+
+      .flow-grid {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(130px, 1fr));
+        gap: 8px;
+      }
+      .flow-node {
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fffcf9;
+        min-height: 92px;
+      }
+      .flow-state {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+      }
+      .flow-node .name {
+        margin-top: 6px;
+        font-weight: 800;
+        font-size: 13px;
+      }
+      .flow-node .desc {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+      .flow-node.done {
+        border-color: rgba(23, 138, 86, 0.4);
+        background: #eff9f3;
+      }
+      .flow-node.running {
+        border-color: rgba(197, 82, 43, 0.5);
+        background: #fff1e5;
+      }
+      .flow-node.pending { opacity: 0.62; }
+
       .timeline { display: grid; gap: 10px; }
-      .stage { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #fcfdff; }
-      .stage h3 { font-size: 14px; margin-bottom: 4px; }
-      .stage .desc { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-      .stage .stamp { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-      .kv { font-size: 12px; color: var(--text); display: grid; gap: 4px; }
-      .kv div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      details { margin-top: 8px; }
-      pre { margin: 0; font-size: 11px; background: #f4f7ff; border: 1px solid var(--border); border-radius: 8px; padding: 8px; overflow: auto; max-height: 260px; }
-      a { color: var(--accent); }
-      .error { color: #b91c1c; font-size: 12px; white-space: pre-wrap; }
+      .timeline-empty {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .stage-card {
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        background: #fff;
+        padding: 12px;
+      }
+      .stage-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .stage-card h4 {
+        font-family: "Fraunces", serif;
+        font-size: 20px;
+      }
+      .stage-time {
+        font-size: 12px;
+        color: var(--muted);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+      .stage-desc {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .stage-grid {
+        margin-top: 9px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .stage-cell {
+        border: 1px solid var(--stroke);
+        border-radius: 10px;
+        background: #fff8f2;
+        padding: 8px;
+      }
+      .stage-cell .k {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .stage-cell .v {
+        margin-top: 6px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+        line-height: 1.35;
+      }
+      details {
+        margin-top: 8px;
+        border: 1px dashed var(--stroke);
+        border-radius: 10px;
+        padding: 8px;
+        background: #fffcf8;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 1180px) {
+        .pills { grid-template-columns: 1fr; }
+        .toolbar { grid-template-columns: 1fr 1fr; }
+        .story-grid { grid-template-columns: 1fr; }
+        .flow-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      }
+      @media (max-width: 760px) {
+        .toolbar { grid-template-columns: 1fr; }
+        .stage-grid { grid-template-columns: 1fr; }
+        .flow-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <main class="wrap">
-      <section class="panel">
-        <h1>Transcript to EPUB Live Lab</h1>
-        <p class="meta">Result-first E2E run view + stage-by-stage observability for learning and debugging.</p>
+    <main class="shell">
+      <section class="panel hero">
+        <h1>Transcript to EPUB Observatory</h1>
+        <p class="hero-sub">Run complete transcript workflows without the black box feeling. Compare input and output quality quickly, and inspect every pipeline stage with explicit evidence.</p>
+        <div class="pills">
+          <div class="pill">
+            <div class="k">Purpose</div>
+            <div class="v">See if EPUB quality improved.</div>
+          </div>
+          <div class="pill">
+            <div class="k">Method</div>
+            <div class="v">Live stage observability + artifacts.</div>
+          </div>
+          <div class="pill">
+            <div class="k">Audience</div>
+            <div class="v">Ceci + research-style collaborators.</div>
+          </div>
+        </div>
       </section>
 
       <section class="panel">
-        <div class="row">
-          <div style="min-width:260px; flex: 1;">
+        <div class="toolbar">
+          <div>
             <label for="sampleSelect">Transcript Sample</label>
             <select id="sampleSelect"></select>
           </div>
-          <div style="min-width:160px;">
+          <div>
             <label for="methodSelect">Generation Method</label>
             <select id="methodSelect">
               <option value="B">Method B</option>
@@ -402,45 +742,71 @@ function buildHtmlPage() {
               <option value="C">Method C</option>
             </select>
           </div>
-          <div>
-            <button id="refreshSamples">Refresh Samples</button>
-          </div>
-          <div>
-            <button id="runBtn">Run E2E</button>
-          </div>
+          <button id="refreshSamples" class="btn-muted">Refresh Samples</button>
+          <button id="runBtn" class="btn-run">Run E2E</button>
         </div>
-        <p class="meta" id="sampleMeta">Loading samples...</p>
-        <p class="error" id="sampleError"></p>
+        <p id="sampleMeta" class="meta-line">Loading samples...</p>
+        <p id="sampleError" class="error"></p>
       </section>
 
-      <section class="top">
-        <article class="panel">
-          <h2>Input Transcript</h2>
-          <p class="meta" id="inputMeta"></p>
-          <textarea id="transcriptPreview" readonly></textarea>
-        </article>
-        <article class="panel">
-          <h2>Final EPUB Result</h2>
-          <div id="resultSummary" class="meta">No run yet.</div>
-          <div id="resultLinks" class="meta"></div>
-          <h3 style="margin-top: 10px;">Markdown Preview</h3>
-          <pre id="mdPreview">(run to see output)</pre>
-        </article>
-      </section>
+      <section>
+        <div class="story-grid">
+          <article class="panel">
+            <div class="section-head">
+              <h2>Input Transcript</h2>
+              <p>What went in</p>
+            </div>
+            <p id="inputMeta" class="transcript-meta"></p>
+            <textarea id="transcriptPreview" readonly></textarea>
+          </article>
 
-      <section class="panel">
-        <h2>Live Stage Timeline</h2>
-        <p class="meta">Each card explains what happened in that stage. Expand raw JSON for full payloads.</p>
-        <div class="timeline" id="timeline"></div>
+          <article class="panel">
+            <div class="section-head">
+              <h2>Output Check</h2>
+              <p>What came out</p>
+            </div>
+            <div class="result-shell">
+              <div id="storyStatusBadge" class="status-pill warn">IDLE</div>
+              <div id="storySummary" class="result-summary">Start a run to populate this panel.</div>
+              <div id="storyArtifactLinks" class="artifact-links"></div>
+              <div class="preview-title">Markdown Preview (first 3200 chars)</div>
+              <pre id="storyMdPreview">(run to see output)</pre>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>Pipeline Flow</h2>
+            <p>Where the run is now</p>
+          </div>
+          <div id="storyFlow" class="flow-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>Stage Narrative</h2>
+            <p>Why each step happened</p>
+          </div>
+          <div id="storyTimeline" class="timeline"></div>
+        </article>
       </section>
     </main>
 
     <script>
       const stageExplanations = ${JSON.stringify(STAGE_EXPLANATIONS)};
+      const flowOrder = ["transcript", "normalization", "llm_request", "llm_response", "pdf", "render"];
+      const queryParams = new URLSearchParams(window.location.search);
+      const initialSampleId = queryParams.get("sample") || "";
+      const methodCandidate = String(queryParams.get("method") || "B").toUpperCase();
+      const initialMethod = methodCandidate === "A" || methodCandidate === "C" ? methodCandidate : "B";
+
       const state = {
         samples: [],
         currentRun: null,
         pollTimer: null,
+        selectedSampleLabel: "-",
+        initSampleId: initialSampleId,
       };
 
       const sampleSelect = document.getElementById("sampleSelect");
@@ -449,11 +815,31 @@ function buildHtmlPage() {
       const sampleError = document.getElementById("sampleError");
       const inputMeta = document.getElementById("inputMeta");
       const transcriptPreview = document.getElementById("transcriptPreview");
-      const resultSummary = document.getElementById("resultSummary");
-      const resultLinks = document.getElementById("resultLinks");
-      const mdPreview = document.getElementById("mdPreview");
-      const timeline = document.getElementById("timeline");
       const runBtn = document.getElementById("runBtn");
+      const storyStatusBadge = document.getElementById("storyStatusBadge");
+      const storySummary = document.getElementById("storySummary");
+      const storyArtifactLinks = document.getElementById("storyArtifactLinks");
+      const storyMdPreview = document.getElementById("storyMdPreview");
+      const storyFlow = document.getElementById("storyFlow");
+      const storyTimeline = document.getElementById("storyTimeline");
+
+      function writeShareableUrl(overrides = {}) {
+        const params = new URLSearchParams(window.location.search);
+        const next = {
+          sample: overrides.sample ?? sampleSelect.value,
+          method: overrides.method ?? methodSelect.value,
+        };
+        for (const [key, value] of Object.entries(next)) {
+          if (value) {
+            params.set(key, value);
+          } else {
+            params.delete(key);
+          }
+        }
+        const query = params.toString();
+        const nextUrl = query ? window.location.pathname + "?" + query : window.location.pathname;
+        window.history.replaceState({}, "", nextUrl);
+      }
 
       async function fetchJson(path, options = {}) {
         const response = await fetch(path, options);
@@ -471,6 +857,18 @@ function buildHtmlPage() {
         return source + " · " + sample.char_count + " chars" + (sample.created_at ? " · " + sample.created_at : "");
       }
 
+      function shortKeys(record) {
+        if (!record || typeof record !== "object") return "-";
+        const keys = Object.keys(record).slice(0, 8);
+        return keys.length ? keys.join(", ") : "-";
+      }
+
+      function statusTone(statusValue) {
+        if (statusValue === "succeeded") return "ok";
+        if (statusValue === "failed" || statusValue === "canceled") return "fail";
+        return "warn";
+      }
+
       function renderSampleOptions() {
         sampleSelect.innerHTML = "";
         for (const sample of state.samples) {
@@ -484,8 +882,10 @@ function buildHtmlPage() {
       async function loadSampleText(sampleId) {
         const payload = await fetchJson("/api/sample?id=" + encodeURIComponent(sampleId));
         const sample = payload.sample || {};
+        state.selectedSampleLabel = sample.title || sampleId;
         transcriptPreview.value = sample.transcript_text || "";
-        inputMeta.textContent = (sample.title || sampleId) + " · " + (sample.language || "zh-CN") + " · " + (sample.char_count || 0) + " chars";
+        inputMeta.textContent = state.selectedSampleLabel + " · " + (sample.language || "zh-CN") + " · " + (sample.char_count || 0) + " chars";
+        writeShareableUrl({ sample: sampleId });
       }
 
       async function loadSamples() {
@@ -499,50 +899,100 @@ function buildHtmlPage() {
           sampleError.textContent = "History sample fetch warning: " + payload.history_error;
         }
         if (state.samples.length > 0) {
-          await loadSampleText(state.samples[0].id);
+          const preferredSampleId = state.initSampleId && state.samples.some((item) => item.id === state.initSampleId)
+            ? state.initSampleId
+            : state.samples[0].id;
+          sampleSelect.value = preferredSampleId;
+          state.initSampleId = "";
+          await loadSampleText(preferredSampleId);
         } else {
           transcriptPreview.value = "";
-          inputMeta.textContent = "No sample found. Add .txt files under tasks/transcript-samples.";
+          inputMeta.textContent = "No sample found. Add .txt files under data/transcripts or tasks/transcript-samples.";
         }
       }
 
-      function renderLinks(artifacts) {
-        if (!Array.isArray(artifacts) || artifacts.length === 0) {
-          resultLinks.innerHTML = "";
+      function renderArtifacts(artifacts) {
+        const rows = Array.isArray(artifacts) ? artifacts : [];
+        if (!rows.length) {
+          storyArtifactLinks.innerHTML = "";
           return;
         }
-        resultLinks.innerHTML = artifacts.map((item) => {
-          return '<div><a href="' + item.download_url + '" target="_blank" rel="noreferrer">Download ' + item.type + "</a></div>";
-        }).join("");
+        storyArtifactLinks.innerHTML = rows
+          .map((item) => '<a href="' + item.download_url + '" target="_blank" rel="noreferrer">Download ' + String(item.type || "").toUpperCase() + "</a>")
+          .join("");
+      }
+
+      function renderFlow(stages, statusValue) {
+        storyFlow.innerHTML = "";
+        const doneStages = new Set((stages || []).map((stage) => String(stage.stage || "")));
+        const runningStage = stages && stages.length ? String(stages[stages.length - 1].stage || "") : "";
+        for (const step of flowOrder) {
+          const card = document.createElement("article");
+          let stateLabel = "pending";
+          if (doneStages.has(step)) {
+            stateLabel = "done";
+          } else if ((statusValue === "queued" || statusValue === "processing") && runningStage === step) {
+            stateLabel = "running";
+          } else if (step === "render" && statusValue === "succeeded") {
+            stateLabel = "done";
+          }
+          card.className = "flow-node " + stateLabel;
+          const desc = stageExplanations[step] || "Pipeline stage";
+          card.innerHTML = [
+            '<div class="flow-state">' + stateLabel + "</div>",
+            '<div class="name">' + step + "</div>",
+            '<div class="desc">' + desc + "</div>",
+          ].join("");
+          storyFlow.appendChild(card);
+        }
       }
 
       function renderTimeline(stages) {
-        timeline.innerHTML = "";
+        storyTimeline.innerHTML = "";
         if (!Array.isArray(stages) || stages.length === 0) {
-          timeline.innerHTML = "<p class=\\"meta\\">No stage data yet.</p>";
+          storyTimeline.innerHTML = '<p class="timeline-empty">No stage data yet.</p>';
           return;
         }
+
         for (const stage of stages) {
           const card = document.createElement("article");
-          card.className = "stage";
-          const name = stage.stage || "unknown";
-          const desc = stageExplanations[name] || "Stage emitted from pipeline.";
-          const notes = stage.notes ? "<div><strong>Notes:</strong> " + stage.notes + "</div>" : "";
-          const inputKeys = stage.input ? Object.keys(stage.input).slice(0, 4).join(", ") : "-";
-          const outputKeys = stage.output ? Object.keys(stage.output).slice(0, 4).join(", ") : "-";
+          card.className = "stage-card";
+          const stageName = String(stage.stage || "unknown");
+          const desc = stageExplanations[stageName] || "Pipeline stage event.";
+          const notes = stage.notes ? String(stage.notes) : "No notes attached.";
+          const payloadSize = JSON.stringify(stage).length;
           card.innerHTML = [
-            "<h3>" + name + "</h3>",
-            "<div class=\\"desc\\">" + desc + "</div>",
-            "<div class=\\"stamp\\">" + (stage.ts || "") + "</div>",
-            "<div class=\\"kv\\">",
-            "<div><strong>Input keys:</strong> " + inputKeys + "</div>",
-            "<div><strong>Output keys:</strong> " + outputKeys + "</div>",
-            notes,
+            '<div class="stage-top"><h4>' + stageName + '</h4><div class="stage-time">' + String(stage.ts || "-") + "</div></div>",
+            '<div class="stage-desc">' + desc + "</div>",
+            '<div class="stage-grid">',
+            '<div class="stage-cell"><div class="k">Input keys</div><div class="v">' + shortKeys(stage.input) + "</div></div>",
+            '<div class="stage-cell"><div class="k">Output keys</div><div class="v">' + shortKeys(stage.output) + "</div></div>",
+            '<div class="stage-cell"><div class="k">Notes</div><div class="v">' + notes + "</div></div>",
+            '<div class="stage-cell"><div class="k">Payload size</div><div class="v">' + payloadSize + " chars</div></div>",
             "</div>",
             "<details><summary>Raw JSON</summary><pre>" + JSON.stringify(stage, null, 2) + "</pre></details>",
           ].join("");
-          timeline.appendChild(card);
+          storyTimeline.appendChild(card);
         }
+      }
+
+      function renderStatus(run, status, inspector) {
+        const statusValue = String(status.status || "idle");
+        const tone = statusTone(statusValue);
+        storyStatusBadge.className = "status-pill " + tone;
+        storyStatusBadge.textContent = statusValue.toUpperCase();
+        storySummary.innerHTML = [
+          "<b>Run ID:</b> " + (run?.run_id || "-"),
+          "<br/><b>Job ID:</b> " + (run?.job_id || "-"),
+          "<br/><b>Pipeline stage:</b> " + String(status.stage || "-"),
+          "<br/><b>Inspector mode:</b> " + (inspector.live ? "live stream" : "persisted trace"),
+          "<br/><b>Updated:</b> " + new Date().toLocaleTimeString(),
+        ].join("");
+      }
+
+      function setMarkdownPreview(mdText) {
+        const value = mdText ? String(mdText).slice(0, 3200) : "(run to see output)";
+        storyMdPreview.textContent = value;
       }
 
       function stopPolling() {
@@ -558,21 +1008,15 @@ function buildHtmlPage() {
         const status = payload.status || {};
         const inspector = payload.inspector || {};
         const artifacts = payload.artifacts || {};
-        const mdText = payload.markdown_text || "";
+        const stages = inspector.stages || [];
         const processing = status.status === "queued" || status.status === "processing";
-        const statusClass = status.status === "succeeded" ? "status-ok" : processing ? "status-warn" : "status-warn";
-        resultSummary.innerHTML = [
-          "Run ID: " + state.currentRun.run_id,
-          "<br/>Job ID: " + state.currentRun.job_id,
-          "<br/>Status: <span class=\\"" + statusClass + "\\">" + (status.status || "unknown") + "</span>",
-          "<br/>Pipeline stage: " + (status.stage || "-"),
-          inspector.live ? "<br/>Inspector mode: live" : "<br/>Inspector mode: persisted",
-        ].join("");
-        renderLinks(artifacts.artifacts || []);
-        if (mdText) {
-          mdPreview.textContent = mdText.slice(0, 3200);
-        }
-        renderTimeline(inspector.stages || []);
+
+        renderStatus(state.currentRun, status, inspector);
+        renderArtifacts(artifacts.artifacts || []);
+        renderFlow(stages, status.status || "idle");
+        renderTimeline(stages);
+        setMarkdownPreview(payload.markdown_text || "");
+
         if (processing) {
           state.pollTimer = setTimeout(pollRun, 1000);
           return;
@@ -580,15 +1024,22 @@ function buildHtmlPage() {
         runBtn.disabled = false;
       }
 
+      function resetRunPanels() {
+        storyStatusBadge.className = "status-pill warn";
+        storyStatusBadge.textContent = "STARTING";
+        storySummary.textContent = "Starting run...";
+        renderArtifacts([]);
+        renderFlow([], "queued");
+        renderTimeline([]);
+        setMarkdownPreview("");
+      }
+
       async function startRun() {
         const sampleId = sampleSelect.value;
         if (!sampleId) return;
         runBtn.disabled = true;
         stopPolling();
-        resultSummary.textContent = "Starting run...";
-        resultLinks.innerHTML = "";
-        mdPreview.textContent = "(running...)";
-        timeline.innerHTML = "<p class=\\"meta\\">Waiting for stage data...</p>";
+        resetRunPanels();
         const payload = await fetchJson("/api/runs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -606,20 +1057,32 @@ function buildHtmlPage() {
         if (!sampleId) return;
         await loadSampleText(sampleId);
       });
-
+      methodSelect.addEventListener("change", () => {
+        writeShareableUrl({ method: methodSelect.value });
+      });
       document.getElementById("refreshSamples").addEventListener("click", async () => {
         await loadSamples();
       });
-
       runBtn.addEventListener("click", async () => {
         try {
           await startRun();
         } catch (error) {
           runBtn.disabled = false;
-          resultSummary.innerHTML = "<span class=\\"status-warn\\">Run failed to start: " + (error && error.message ? error.message : String(error)) + "</span>";
+          storyStatusBadge.className = "status-pill fail";
+          storyStatusBadge.textContent = "FAILED";
+          storySummary.textContent = "Run failed to start: " + (error && error.message ? error.message : String(error));
+        }
+      });
+      document.addEventListener("keydown", async (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !runBtn.disabled) {
+          event.preventDefault();
+          runBtn.click();
         }
       });
 
+      methodSelect.value = initialMethod;
+      renderFlow([], "idle");
+      renderTimeline([]);
       loadSamples().catch((error) => {
         sampleError.textContent = "Failed to load samples: " + (error && error.message ? error.message : String(error));
       });
