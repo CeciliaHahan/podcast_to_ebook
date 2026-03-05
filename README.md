@@ -14,8 +14,72 @@ This project is used by one person, so the architecture should stay simple, expl
 
 ## Flow Map + Glossary
 
-- System flow map + CN/EN glossary:
-  - `docs/system-flow-map-and-glossary.md`
+### System Flow Map (As-Is)
+
+```mermaid
+flowchart TD
+  U[User in Extension Sidepanel] --> F1
+
+  subgraph F1[Flow 1: Entry Request Flow]
+    A1[Fill form: title/language/transcript/compliance] --> A2[POST /v1/epub/from-transcript]
+    A2 --> A3[Request validation + compliance check]
+  end
+
+  A3 --> F2
+  subgraph F2[Flow 2: Data Transformation Flow]
+    B1[extractTranscriptBody + cleanup] --> B2[parseTranscriptEntries]
+    B2 --> B3[planSemanticSegments]
+    B3 --> B4[buildChapterPlan]
+    B4 --> B5[build deterministic base model]
+  end
+
+  B5 --> F3
+  subgraph F3[Flow 3: Generation Strategy Flow]
+    C1[generation_method = C only] --> C2{transcript > 32k?}
+    C2 -->|Yes| C3[skip full-book LLM]
+    C3 --> C4[chapter-level patch]
+    C2 -->|No| C5[full-book LLM draft]
+    C5 --> C6{draft parse OK?}
+    C6 -->|No| C4
+    C6 -->|Yes| C7[merge with evidence checks]
+    C4 --> C7
+  end
+
+  C7 --> F4
+  subgraph F4[Flow 4: Quality + Render Flow]
+    D1[countModelQualityIssues] --> D2[quality gate stats]
+    D2 --> D3[render artifacts]
+    D3 --> D4[write .dev-artifacts/run_*]
+  end
+
+  D4 --> F5
+  subgraph F5[Flow 5: Delivery Flow]
+    E1[inline response: artifacts + stages] --> E2[sidepanel render status/events/download]
+    E2 --> E3[GET /downloads/:job_id/:file_name]
+  end
+
+  D4 --> F6
+  subgraph F6[Flow 6: Evaluation/Observability Flow]
+    G1[inspector stages: transcript/normalization/llm_*] --> G2[observe-transcript-run dashboard]
+    G2 --> G3[compare quality regressions]
+  end
+```
+
+### Glossary (CN/EN, short)
+
+| 中文术语 | English Term | 一句话定义 |
+| --- | --- | --- |
+| 入口数据 | Entry Data | 用户提交到 API 的原始请求数据包。 |
+| 解析 | Parsing | 把非结构化文本转成结构化对象。 |
+| 控制流 | Control Flow | 系统按什么顺序调用模块。 |
+| 数据流 | Data Flow | 数据在各阶段如何变形与传递。 |
+| 质量门 | Quality Gate | 渲染前的结构和内容检查机制。 |
+| 证据约束 | Evidence Constraint | 引用与结论需可在原文中找到支持。 |
+| 产物 | Artifact | 生成的 EPUB/PDF/MD 文件。 |
+| 内联返回 | Inline Response | 同一个请求直接返回产物与阶段信息。 |
+| 可观测性 | Observability | 可追踪系统内部阶段与数据状态。 |
+
+Full version: `docs/system-flow-map-and-glossary.md`
 
 ## What Exists Today
 
