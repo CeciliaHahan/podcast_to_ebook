@@ -64,11 +64,11 @@ node scripts/observe-transcript-run.mjs
 
 What you get:
 
-- sample picker (local samples + recent transcript runs)
-- one-click E2E run (`/v1/jobs/from-transcript`)
+- sample picker (local samples from repo files)
+- one-click E2E run (`/v1/epub/from-transcript`)
 - `Version A Storyboard`: narrative flow + stage cards
 - live stage timeline (`transcript`, `normalization`, `llm_request`, `llm_response`, etc.)
-- final EPUB + Markdown result panel
+- final EPUB result panel
 - shareable debug state in URL query:
   - `method=A|B|C`
   - `sample=<sample_id>`
@@ -85,10 +85,6 @@ data/transcripts/
 | Method | Path | Status |
 | --- | --- | --- |
 | `POST` | `/v1/epub/from-transcript` | Primary DB-free transcript -> EPUB entrypoint (EPUB-only, no `output_formats` required, inline artifacts/inspector on success) |
-| `POST` | `/v1/jobs/from-transcript` | Backward-compatible DB-backed transcript entrypoint |
-| `GET` | `/v1/jobs/{id}` | Used for status polling |
-| `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
-| `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
 
 Auth for local dev:
 
@@ -110,7 +106,6 @@ flowchart TD
 ```
 
 Important: there is no background queue right now. The pipeline runs inline in the backend process.
-`/v1/jobs/*` remains as DB-backed compatibility mode.
 
 ## Target Simplification (Planned)
 

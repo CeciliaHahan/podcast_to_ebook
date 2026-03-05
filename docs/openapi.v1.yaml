@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Podcasts_to_ebooks API
   version: 1.0.0
-  description: V1 API contract for the Podcasts_to_ebooks Chrome Extension backend.
+  description: Current transcript-to-EPUB API contract (single inline generation path).
 servers:
   - url: https://api.example.com
     description: Production
@@ -11,38 +11,12 @@ servers:
 security:
   - bearerAuth: []
 tags:
-  - name: Jobs
+  - name: Generation
 paths:
-  /v1/jobs/from-transcript:
-    post:
-      tags: [Jobs]
-      summary: Create job from transcript text
-      operationId: createJobFromTranscript
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTranscriptJobRequest"
-      responses:
-        "202":
-          description: Job accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
-        "400":
-          $ref: "#/components/responses/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "403":
-          $ref: "#/components/responses/ErrorResponse"
-        "429":
-          $ref: "#/components/responses/ErrorResponse"
   /v1/epub/from-transcript:
     post:
-      tags: [Jobs]
-      summary: Simplified transcript entrypoint (alias of /v1/jobs/from-transcript)
+      tags: [Generation]
+      summary: Generate EPUB from transcript text (inline)
       operationId: createEpubFromTranscript
       requestBody:
         required: true
@@ -57,12 +31,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateEpubFromTranscriptResponse"
-        "202":
-          description: Job accepted (fallback if inline response is not available)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "401":
@@ -71,76 +39,12 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "429":
           $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/{job_id}:
-    get:
-      tags: [Jobs]
-      summary: Query job status
-      operationId: getJobStatus
-      parameters:
-        - $ref: "#/components/parameters/JobId"
-      responses:
-        "200":
-          description: Job status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobStatusResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "404":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/{job_id}/artifacts:
-    get:
-      tags: [Jobs]
-      summary: List downloadable artifacts for a completed job
-      operationId: listJobArtifacts
-      parameters:
-        - $ref: "#/components/parameters/JobId"
-      responses:
-        "200":
-          description: Artifacts list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobArtifactsResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "404":
-          $ref: "#/components/responses/ErrorResponse"
-        "409":
-          $ref: "#/components/responses/ErrorResponse"
-  /v1/jobs/{job_id}/inspector:
-    get:
-      tags: [Jobs]
-      summary: Get stage-by-stage inspector trace for a job
-      operationId: getJobInspector
-      parameters:
-        - $ref: "#/components/parameters/JobId"
-      responses:
-        "200":
-          description: Inspector stage records
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobInspectorResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "404":
-          $ref: "#/components/responses/ErrorResponse"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  parameters:
-    JobId:
-      name: job_id
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: "^job_[a-zA-Z0-9]+$"
   responses:
     ErrorResponse:
       description: Standard API error
@@ -152,9 +56,6 @@ components:
     OutputFormat:
       type: string
       enum: [epub, pdf, md]
-    JobStatus:
-      type: string
-      enum: [queued, processing, succeeded, failed, canceled]
     ComplianceDeclaration:
       type: object
       additionalProperties: false
@@ -164,8 +65,10 @@ components:
       properties:
         for_personal_or_authorized_use_only:
           type: boolean
+          const: true
         no_commercial_use:
           type: boolean
+          const: true
     CommonMetadata:
       type: object
       additionalProperties: true
@@ -177,40 +80,9 @@ components:
         episode_url:
           type: string
           format: uri
-    CreateTranscriptJobRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - title
-        - language
-        - transcript_text
-        - output_formats
-        - compliance_declaration
-      properties:
-        title:
+        generation_method:
           type: string
-          minLength: 1
-          maxLength: 300
-        language:
-          type: string
-          example: zh-CN
-        transcript_text:
-          type: string
-          minLength: 10
-          maxLength: 120000
-        template_id:
-          type: string
-          default: templateA-v0-book
-        output_formats:
-          type: array
-          minItems: 1
-          uniqueItems: true
-          items:
-            $ref: "#/components/schemas/OutputFormat"
-        metadata:
-          $ref: "#/components/schemas/CommonMetadata"
-        compliance_declaration:
-          $ref: "#/components/schemas/ComplianceDeclaration"
+          enum: [A, B, C]
     CreateEpubFromTranscriptRequest:
       type: object
       additionalProperties: false
@@ -238,107 +110,9 @@ components:
           $ref: "#/components/schemas/CommonMetadata"
         compliance_declaration:
           $ref: "#/components/schemas/ComplianceDeclaration"
-    JobAcceptedResponse:
+    JobArtifactItem:
       type: object
-      additionalProperties: false
-      required:
-        - job_id
-        - status
-        - created_at
-      properties:
-        job_id:
-          type: string
-        status:
-          type: string
-          enum: [queued, succeeded]
-        created_at:
-          type: string
-          format: date-time
-    CreateEpubFromTranscriptResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - job_id
-        - status
-        - created_at
-        - artifacts
-        - stages
-      properties:
-        job_id:
-          type: string
-        status:
-          type: string
-          enum: [succeeded]
-        created_at:
-          type: string
-          format: date-time
-        artifacts:
-          type: array
-          items:
-            $ref: "#/components/schemas/ArtifactItem"
-        stages:
-          type: array
-          items:
-            $ref: "#/components/schemas/InspectorStage"
-        traceability:
-          $ref: "#/components/schemas/Traceability"
-    JobError:
-      type: object
-      additionalProperties: false
-      required:
-        - code
-        - message
-      properties:
-        code:
-          type: string
-          enum:
-            - INVALID_INPUT
-            - UNAUTHORIZED
-            - FORBIDDEN
-            - RATE_LIMITED
-            - GENERATION_FAILED
-            - ARTIFACT_EXPIRED
-            - NOT_FOUND
-            - JOB_NOT_READY
-        message:
-          type: string
-    JobStatusResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - job_id
-        - status
-      properties:
-        job_id:
-          type: string
-        status:
-          $ref: "#/components/schemas/JobStatus"
-        progress:
-          type: integer
-          minimum: 0
-          maximum: 100
-        stage:
-          type: string
-          example: pipeline
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        error:
-          anyOf:
-            - $ref: "#/components/schemas/JobError"
-            - type: "null"
-    ArtifactItem:
-      type: object
-      additionalProperties: false
-      required:
-        - type
-        - file_name
-        - size_bytes
-        - download_url
-        - expires_at
+      required: [type, file_name, size_bytes, download_url, expires_at]
       properties:
         type:
           $ref: "#/components/schemas/OutputFormat"
@@ -346,56 +120,20 @@ components:
           type: string
         size_bytes:
           type: integer
-          minimum: 1
+          minimum: 0
         download_url:
           type: string
           format: uri
         expires_at:
           type: string
           format: date-time
-    Traceability:
+    InspectorStageRecord:
       type: object
-      additionalProperties: false
-      required:
-        - source_type
-        - source_ref
-        - generated_at
-      properties:
-        source_type:
-          type: string
-          enum: [transcript, audio, rss, link]
-        source_ref:
-          type: string
-        generated_at:
-          type: string
-          format: date-time
-    JobArtifactsResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - job_id
-        - status
-        - artifacts
-      properties:
-        job_id:
-          type: string
-        status:
-          $ref: "#/components/schemas/JobStatus"
-        artifacts:
-          type: array
-          items:
-            $ref: "#/components/schemas/ArtifactItem"
-        traceability:
-          $ref: "#/components/schemas/Traceability"
-    InspectorStage:
-      type: object
-      additionalProperties: false
-      required:
-        - stage
-        - ts
+      required: [stage, ts]
       properties:
         stage:
           type: string
+          example: normalization
         ts:
           type: string
           format: date-time
@@ -410,31 +148,46 @@ components:
           additionalProperties: true
         notes:
           type: string
-    JobInspectorResponse:
+    CreateEpubFromTranscriptResponse:
       type: object
-      additionalProperties: false
-      required:
-        - job_id
-        - stages
+      required: [job_id, status, created_at, artifacts, stages, traceability]
       properties:
         job_id:
           type: string
+          example: run_abc123
+        status:
+          type: string
+          enum: [succeeded]
+        created_at:
+          type: string
+          format: date-time
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobArtifactItem"
         stages:
           type: array
           items:
-            $ref: "#/components/schemas/InspectorStage"
+            $ref: "#/components/schemas/InspectorStageRecord"
+        traceability:
+          type: object
+          required: [source_type, source_ref, generated_at]
+          properties:
+            source_type:
+              type: string
+              enum: [transcript]
+            source_ref:
+              type: string
+            generated_at:
+              type: string
+              format: date-time
     ErrorEnvelope:
       type: object
-      additionalProperties: false
       required: [error]
       properties:
         error:
           type: object
-          additionalProperties: false
-          required:
-            - code
-            - message
-            - request_id
+          required: [code, message, request_id]
           properties:
             code:
               type: string
