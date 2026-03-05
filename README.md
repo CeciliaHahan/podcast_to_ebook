@@ -12,6 +12,11 @@ This project is used by one person, so the architecture should stay simple, expl
 - Do not overengineer for scale, workflows, or abstractions we do not need yet.
 - Add complexity only when it clearly improves output quality or fixes repeated real pain.
 
+## Flow Map + Glossary
+
+- System flow map + CN/EN glossary:
+  - `docs/system-flow-map-and-glossary.md`
+
 ## What Exists Today
 
 - Chrome extension side panel submits transcript text.
