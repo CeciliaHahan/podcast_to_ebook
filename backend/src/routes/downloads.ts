@@ -3,8 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
-import { config } from "../config.js";
-import { getArtifactForDownload } from "../repositories/jobsRepo.js";
 import type { OutputFormat } from "../types/domain.js";
 
 const router = Router();
@@ -58,10 +56,7 @@ router.get(
       throw new ApiError(400, "INVALID_INPUT", "Invalid download path.");
     }
 
-    const useFilesystemLookup = !config.databaseEnabled || jobId.startsWith("run_");
-    const artifact = useFilesystemLookup
-      ? await resolveArtifactFromFilesystem(jobId, fileName)
-      : await getArtifactForDownload(jobId, fileName);
+    const artifact = await resolveArtifactFromFilesystem(jobId, fileName);
     if (!artifact) {
       throw new ApiError(404, "NOT_FOUND", "Artifact not found.");
     }
