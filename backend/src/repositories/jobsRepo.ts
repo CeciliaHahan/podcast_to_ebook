@@ -528,6 +528,12 @@ function containsUnresolvedTemplatePlaceholder(value: string): boolean {
   return PLACEHOLDER_TOKEN_RE.test(value);
 }
 
+function normalizeChapterTitleKey(input: string): string {
+  return cleanLine(String(input || ""))
+    .toLowerCase()
+    .replace(/[\s，,。.!！？?：:、\-_/()（）【】\[\]]+/g, "");
+}
+
 function countModelQualityIssues(model: BookletModel): string[] {
   const issues: string[] = [];
   if (!model.chapters.length) {
@@ -546,10 +552,16 @@ function countModelQualityIssues(model: BookletModel): string[] {
     model.chapters.map((chapter) => `chap_${String(chapter.index + 3).padStart(2, "0")}`),
   );
   const seenSectionIds = new Set<string>();
+  let previousTitleKey = "";
   for (const chapter of model.chapters) {
     if (!chapter.title || chapter.title.length < 2) {
       issues.push(`chapter_title_too_short:${chapter.index}`);
     }
+    const titleKey = normalizeChapterTitleKey(chapter.title);
+    if (titleKey && previousTitleKey && titleKey === previousTitleKey) {
+      issues.push(`chapter_title_consecutive_duplicate:${chapter.index}`);
+    }
+    previousTitleKey = titleKey;
     if (!chapter.range) {
       issues.push(`chapter_range_missing:${chapter.index}`);
     }
@@ -757,6 +769,7 @@ const QUALITY_GATE_BLOCKING_PREFIXES: string[] = [
   "appendix_theme_quotes_missing",
   "no_chapters",
   "chapter_title_too_short",
+  "chapter_title_consecutive_duplicate",
   "chapter_range_missing",
   "chapter_section_id_mismatch",
   "chapter_section_id_duplicate",
@@ -2251,6 +2264,72 @@ function cleanBookletTimestamp(input: string, maxLength: number): string {
   return cleanLine(input).slice(0, maxLength).trim();
 }
 
+function ensureConsecutiveUniqueChapterTitles(chapters: BookletChapter[]): BookletChapter[] {
+  const out: BookletChapter[] = [];
+  let previousKey = "";
+  let repeatCount = 1;
+  for (const chapter of chapters) {
+    const baseTitle = cleanBookletField(chapter.title, 48) || `第 ${chapter.index} 章`;
+    const key = normalizeChapterTitleKey(baseTitle);
+    if (key && key === previousKey) {
+      repeatCount += 1;
+      const suffix = repeatCount === 2 ? "（延展）" : `（延展 ${repeatCount - 1}）`;
+      const deduped = cleanBookletField(`${baseTitle}${suffix}`, 48) || `${baseTitle}（延展）`;
+      out.push({
+        ...chapter,
+        title: deduped,
+      });
+      previousKey = normalizeChapterTitleKey(deduped);
+      continue;
+    }
+    repeatCount = 1;
+    out.push({
+      ...chapter,
+      title: baseTitle,
+    });
+    previousKey = key;
+  }
+  return out;
+}
+
+function createFallbackChapterPatch(chapter: BookletChapter | undefined, title: string): LlmChapterPatch {
+  const resolvedTitle = cleanBookletField(title, 48) || `第 ${chapter?.index ?? "?"} 章`;
+  const fallbackPoints = uniqueNonEmpty((chapter?.points ?? []).map((item) => cleanBookletField(item, 120)).filter(Boolean));
+  const fallbackActions = uniqueNonEmpty(
+    (chapter?.actions ?? []).map((item) => cleanBookletField(item, 120)).filter(Boolean),
+  );
+  const explanation = chapter?.explanation;
+  return {
+    points: fillToCount(
+      fallbackPoints.slice(0, 5),
+      3,
+      (index) => `围绕“${resolvedTitle}”的关键观点 ${index + 1}。`,
+    ),
+    explanation: {
+      background: cleanBookletField(explanation?.background ?? `讨论背景：${resolvedTitle}`, 220) || `讨论背景：${resolvedTitle}`,
+      coreConcept: cleanBookletField(explanation?.coreConcept ?? `核心概念：${resolvedTitle}`, 220) || `核心概念：${resolvedTitle}`,
+      judgmentFramework:
+        cleanBookletField(
+          explanation?.judgmentFramework ?? "判断标准/框架：优先选择可被原文证据支持、且能转化为具体行为的观点。",
+          220,
+        ) || "判断标准/框架：优先选择可被原文证据支持、且能转化为具体行为的观点。",
+      commonMisunderstanding:
+        cleanBookletField(
+          explanation?.commonMisunderstanding ?? "常见误解：只讨论立场对错而忽略执行路径，导致问题重复出现。",
+          220,
+        ) || "常见误解：只讨论立场对错而忽略执行路径，导致问题重复出现。",
+    },
+    actions: fillToCount(
+      fallbackActions.slice(0, 4),
+      2,
+      (index) =>
+        index === 0
+          ? `把“${resolvedTitle}”拆成 3 步执行清单，并设定截止时间。`
+          : "从本章引用中挑 1 条证据，验证行动是否可执行。",
+    ),
+  };
+}
+
 function chooseListWithFallback(
   preferred: string[],
   fallback: string[],
@@ -2468,7 +2547,7 @@ async function buildBookletModel(params: {
   const mergeCaps = PROFILE_MERGE_CAPS[sourceProfile.sourceProfile];
   const plannedSegments = planSemanticSegments(entries);
   const chapterPlan = buildChapterPlan(entries, plannedSegments, chapterTitleKeywords);
-  const chapters = chapterPlan.map((plan) => {
+  const rawChapters = chapterPlan.map((plan) => {
     const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
     const points = chapterPointsFromChunk(plan.title, chunk, plan.topicKeywords);
     const quotes = chapterQuotesFromChunk(points, chunk);
@@ -2484,6 +2563,7 @@ async function buildBookletModel(params: {
       actions: chapterActionsFromPoints(points),
     };
   });
+  const chapters = ensureConsecutiveUniqueChapterTitles(rawChapters);
 
   const keywordSource = entries.map((entry) => entry.text).join("\n") || transcriptBody;
   const anchorKeywords = topicFocusKeywords([...chapterTitleKeywords, ...rankedDeclaredKeywords], 8);
@@ -2712,7 +2792,9 @@ async function buildBookletModel(params: {
   const evidence = buildQuoteEvidenceIndex(entries);
   const chapterEvidenceMap = buildChapterEvidenceMap(entries, chapterPlan);
   const chapterPatches = new Map<number, LlmChapterPatch>();
+  const deterministicFallbackPatchIndices: number[] = [];
   if (!llmDraft) {
+    const chapterByIndex = new Map<number, BookletChapter>(normalizedBaseModel.chapters.map((chapter) => [chapter.index, chapter]));
     for (const plan of chapterPlan) {
       const chunk = entries.slice(plan.startIndex, plan.endIndex + 1);
       const patch = await generateChapterPatchWithLlm({
@@ -2726,24 +2808,37 @@ async function buildBookletModel(params: {
       });
       if (patch) {
         chapterPatches.set(plan.chapterIndex, patch);
+        continue;
       }
+      chapterPatches.set(
+        plan.chapterIndex,
+        createFallbackChapterPatch(chapterByIndex.get(plan.chapterIndex), plan.title),
+      );
+      deterministicFallbackPatchIndices.push(plan.chapterIndex);
     }
+    const llmPatchCount = chapterPatches.size - deterministicFallbackPatchIndices.length;
     pushInspectorStage(params.inspector, {
       stage: "llm_response",
-      notes: forceChapterPath
-        ? chapterPatches.size
+      notes: [
+        forceChapterPath
           ? "Chapter-level LLM primary path applied for long transcript."
-          : "Chapter-level LLM primary path produced no usable patch."
-        : chapterPatches.size
-          ? "Full-book LLM draft unavailable; chapter-level patch retry applied once."
-          : "Full-book LLM draft unavailable; chapter-level patch retry returned no usable patch.",
+          : "Full-book LLM draft unavailable; chapter-level patch retry applied once.",
+        deterministicFallbackPatchIndices.length
+          ? `Deterministic fallback patch applied for ${deterministicFallbackPatchIndices.length} chapter(s).`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(" "),
       input: {
         retry_strategy: forceChapterPath ? "chapter_patch_primary" : "chapter_patch_once",
         requested_chapters: chapterPlan.length,
       },
       output: {
         patched_chapters: chapterPatches.size,
+        llm_patched_chapters: llmPatchCount,
+        deterministic_fallback_chapters: deterministicFallbackPatchIndices.length,
         patched_indices: Array.from(chapterPatches.keys()),
+        deterministic_fallback_indices: deterministicFallbackPatchIndices,
       },
     });
   }
@@ -2752,6 +2847,10 @@ async function buildBookletModel(params: {
   if (!llmDraft && chapterPatches.size) {
     finalModel = mergeBookletWithChapterPatches(finalModel, chapterPatches, mergeCaps);
   }
+  finalModel = {
+    ...finalModel,
+    chapters: ensureConsecutiveUniqueChapterTitles(finalModel.chapters),
+  };
   finalModel = {
     ...finalModel,
     tldr: normalizeModelTldr(finalModel.tldr, finalModel.chapters, sourceProfile.sourceProfile, topKeywords),
@@ -2771,6 +2870,7 @@ async function buildBookletModel(params: {
       llm_draft_available: Boolean(llmDraft),
       chapter_patch_retry_applied: !llmDraft,
       chapter_patch_count: chapterPatches.size,
+      chapter_patch_deterministic_fallback_count: deterministicFallbackPatchIndices.length,
       base_title: baseModel.meta.title,
     },
     output: {

@@ -12,6 +12,7 @@ const SYSTEM_PROMPT = [
   "7) 输出中文，避免空泛口号和 AI 风格模板话；若任一约束冲突导致缺项，仍按 schema 返回完整字段（可用兜底短语）。",
   "8) 你必须优先保证 JSON 合法性，其次保证字段完备，其次再追求语言优雅。",
 ].join(" ");
+const CHAPTER_PATCH_TIMEOUT_CAP_MS = 45000;
 
 type LlmBookletQuote = {
   speaker: string;
@@ -503,7 +504,7 @@ export async function generateChapterPatchWithLlm(params: {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.min(config.llmTimeoutMs, 20000));
+  const timeout = setTimeout(() => controller.abort(), Math.min(config.llmTimeoutMs, CHAPTER_PATCH_TIMEOUT_CAP_MS));
   try {
     const strictClause =
       params.promptProfile === "strict_template_a"

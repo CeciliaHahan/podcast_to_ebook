@@ -4,7 +4,7 @@ dotenv.config();
 
 const LLM_BASE_URL = "https://openrouter.ai/api/v1";
 const LLM_MODEL = "google/gemini-3-flash";
-const LLM_TIMEOUT_MS = 45000;
+const LLM_TIMEOUT_MS = 90000;
 const LLM_INPUT_MAX_CHARS = 80000;
 
 export function resolveLlmConfig(env: NodeJS.ProcessEnv) {
