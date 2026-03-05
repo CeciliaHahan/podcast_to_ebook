@@ -356,10 +356,6 @@ function buildHtmlPage() {
         --ok: #178a56;
         --warn: #a36000;
         --fail: #af2434;
-        --sheet-bg: #f6f9fc;
-        --sheet-header: #e8eef5;
-        --sheet-border: #c9d4de;
-        --sheet-index: #eef3f8;
         --glow: 0 30px 60px rgba(101, 58, 25, 0.08);
       }
       * { box-sizing: border-box; }
@@ -470,28 +466,6 @@ function buildHtmlPage() {
         background: #fff8f2;
       }
       button:disabled { opacity: 0.55; cursor: wait; }
-      .view-switch {
-        display: inline-flex;
-        border: 1px solid var(--stroke);
-        border-radius: 999px;
-        padding: 4px;
-        background: #fffaf5;
-        gap: 4px;
-      }
-      .view-switch button {
-        border: 0;
-        border-radius: 999px;
-        padding: 8px 12px;
-        min-width: 120px;
-        font-size: 12px;
-        color: var(--muted);
-        background: transparent;
-      }
-      .view-switch button.active {
-        background: #fff;
-        color: var(--accent-deep);
-        box-shadow: 0 4px 14px rgba(84, 44, 17, 0.12);
-      }
       .meta-line {
         margin-top: 10px;
         color: var(--muted);
@@ -503,9 +477,6 @@ function buildHtmlPage() {
         font-size: 13px;
         white-space: pre-wrap;
       }
-
-      .view { display: none; gap: 14px; }
-      .view.active { display: grid; }
 
       .story-grid {
         display: grid;
@@ -723,166 +694,11 @@ function buildHtmlPage() {
         font-weight: 700;
       }
 
-      .grid-wrap {
-        overflow: auto;
-        border: 1px solid #c7d3dc;
-        border-radius: 12px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 860px;
-      }
-      thead th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        background: #edf3f7;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #4d5c68;
-      }
-      th, td {
-        border: 1px solid #d7e0e8;
-        padding: 8px 10px;
-        text-align: left;
-        vertical-align: top;
-        font-size: 12px;
-      }
-      th:first-child,
-      td:first-child {
-        position: sticky;
-        left: 0;
-      }
-      thead th:first-child {
-        background: var(--sheet-header);
-        z-index: 3;
-      }
-      tbody td:first-child {
-        background: var(--sheet-index);
-        z-index: 1;
-      }
-      tbody tr:nth-child(even) {
-        background: #f9fcff;
-      }
-      .cell-index {
-        width: 54px;
-        text-align: right;
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
-        color: #536272;
-      }
-      .cell-mono {
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
-        font-size: 11px;
-        line-height: 1.4;
-        color: #273542;
-      }
-      .status-chip {
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
-        text-transform: uppercase;
-        font-size: 10.5px;
-        letter-spacing: 0.08em;
-        border-radius: 999px;
-        border: 1px solid transparent;
-        padding: 3px 8px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .status-chip.ok {
-        background: #e6f4ec;
-        color: #0f6a41;
-        border-color: #b8e2c9;
-      }
-      .status-chip.warn {
-        background: #fff0d8;
-        color: #915200;
-        border-color: #f2d299;
-      }
-      .status-chip.fail {
-        background: #fde5e8;
-        color: #a02232;
-        border-color: #f2b3bc;
-      }
-      .table-layout {
-        display: grid;
-        gap: 14px;
-      }
-      .sheet-shell {
-        border: 1px solid var(--sheet-border);
-        border-radius: 14px;
-        overflow: hidden;
-        background: var(--sheet-bg);
-      }
-      .sheet-strip {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border-bottom: 1px solid var(--sheet-border);
-        background: linear-gradient(180deg, #f8fbff 0%, #edf3fa 100%);
-      }
-      .sheet-tabs {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-      }
-      .sheet-tab {
-        border: 1px solid #b7c8d8;
-        border-radius: 999px;
-        background: #ffffff;
-        color: #304252;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        padding: 5px 10px;
-      }
-      .sheet-tab.active {
-        background: #193e68;
-        border-color: #193e68;
-        color: #fff;
-      }
-      .sheet-formula {
-        border: 1px solid var(--sheet-border);
-        border-radius: 8px;
-        background: #fff;
-        color: #2f4252;
-        min-height: 34px;
-        display: flex;
-        align-items: center;
-        padding: 7px 10px;
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
-        font-size: 11px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .table-split {
-        display: grid;
-        grid-template-columns: 0.9fr 1.1fr;
-        gap: 14px;
-      }
-      .table-artifacts ul {
-        margin: 0;
-        padding-left: 18px;
-      }
-      .table-artifacts li {
-        margin-bottom: 6px;
-        font-size: 13px;
-      }
-      .table-artifacts a {
-        color: var(--teal);
-      }
-
       @media (max-width: 1180px) {
         .pills { grid-template-columns: 1fr; }
         .toolbar { grid-template-columns: 1fr 1fr; }
         .story-grid { grid-template-columns: 1fr; }
         .flow-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
-        .sheet-strip { grid-template-columns: 1fr; }
-        .table-split { grid-template-columns: 1fr; }
       }
       @media (max-width: 760px) {
         .toolbar { grid-template-columns: 1fr; }
@@ -928,19 +744,12 @@ function buildHtmlPage() {
           </div>
           <button id="refreshSamples" class="btn-muted">Refresh Samples</button>
           <button id="runBtn" class="btn-run">Run E2E</button>
-          <div>
-            <label>View Mode</label>
-            <div class="view-switch">
-              <button id="viewStoryBtn" class="active" type="button">Version A Storyboard</button>
-              <button id="viewTableBtn" type="button">Version B Research Grid</button>
-            </div>
-          </div>
         </div>
         <p id="sampleMeta" class="meta-line">Loading samples...</p>
         <p id="sampleError" class="error"></p>
       </section>
 
-      <section id="viewStory" class="view active">
+      <section>
         <div class="story-grid">
           <article class="panel">
             <div class="section-head">
@@ -982,104 +791,12 @@ function buildHtmlPage() {
           <div id="storyTimeline" class="timeline"></div>
         </article>
       </section>
-
-      <section id="viewTable" class="view">
-        <div class="table-layout">
-          <article class="panel">
-            <div class="section-head">
-              <h2>Run Ledger</h2>
-              <p>Spreadsheet-oriented summary</p>
-            </div>
-            <div class="sheet-shell">
-              <div class="sheet-strip">
-                <div class="sheet-tabs">
-                  <span class="sheet-tab active">Run Ledger</span>
-                  <span class="sheet-tab">Stage Table</span>
-                  <span class="sheet-tab">Artifacts</span>
-                </div>
-                <div id="tableFormulaBar" class="sheet-formula">= stage("none") -> waiting for run data</div>
-              </div>
-              <div class="grid-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Run ID</th>
-                      <th>Job ID</th>
-                      <th>Status</th>
-                      <th>Pipeline Stage</th>
-                      <th>Inspector Mode</th>
-                      <th>Sample</th>
-                      <th>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td class="cell-index">1</td>
-                      <td id="ledgerRunId" class="cell-mono">-</td>
-                      <td id="ledgerJobId" class="cell-mono">-</td>
-                      <td><span id="ledgerStatus" class="status-chip warn">idle</span></td>
-                      <td id="ledgerStage" class="cell-mono">-</td>
-                      <td id="ledgerInspector">-</td>
-                      <td id="ledgerSample">-</td>
-                      <td id="ledgerUpdated" class="cell-mono">-</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="section-head">
-              <h2>Stage Table</h2>
-              <p>Tabular workflow diagnostics</p>
-            </div>
-            <div class="grid-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Stage</th>
-                    <th>Timestamp</th>
-                    <th>What this stage does</th>
-                    <th>Input keys</th>
-                    <th>Output keys</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody id="stageTableBody"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <div class="table-split">
-            <article class="panel table-artifacts">
-              <div class="section-head">
-                <h2>Artifacts</h2>
-                <p>Output files</p>
-              </div>
-              <ul id="tableArtifactList">
-                <li>No artifacts yet.</li>
-              </ul>
-            </article>
-            <article class="panel">
-              <div class="section-head">
-                <h2>Markdown Slice</h2>
-                <p>Text output quick scan</p>
-              </div>
-              <pre id="tableMdPreview">(run to see output)</pre>
-            </article>
-          </div>
-        </div>
-      </section>
     </main>
 
     <script>
       const stageExplanations = ${JSON.stringify(STAGE_EXPLANATIONS)};
       const flowOrder = ["transcript", "normalization", "llm_request", "llm_response", "pdf", "render"];
       const queryParams = new URLSearchParams(window.location.search);
-      const initialView = queryParams.get("view") === "table" ? "table" : "story";
       const initialSampleId = queryParams.get("sample") || "";
       const methodCandidate = String(queryParams.get("method") || "B").toUpperCase();
       const initialMethod = methodCandidate === "A" || methodCandidate === "C" ? methodCandidate : "B";
@@ -1089,7 +806,6 @@ function buildHtmlPage() {
         currentRun: null,
         pollTimer: null,
         selectedSampleLabel: "-",
-        viewMode: initialView,
         initSampleId: initialSampleId,
       };
 
@@ -1106,26 +822,10 @@ function buildHtmlPage() {
       const storyMdPreview = document.getElementById("storyMdPreview");
       const storyFlow = document.getElementById("storyFlow");
       const storyTimeline = document.getElementById("storyTimeline");
-      const viewStory = document.getElementById("viewStory");
-      const viewTable = document.getElementById("viewTable");
-      const viewStoryBtn = document.getElementById("viewStoryBtn");
-      const viewTableBtn = document.getElementById("viewTableBtn");
-      const ledgerRunId = document.getElementById("ledgerRunId");
-      const ledgerJobId = document.getElementById("ledgerJobId");
-      const ledgerStatus = document.getElementById("ledgerStatus");
-      const ledgerStage = document.getElementById("ledgerStage");
-      const ledgerInspector = document.getElementById("ledgerInspector");
-      const ledgerSample = document.getElementById("ledgerSample");
-      const ledgerUpdated = document.getElementById("ledgerUpdated");
-      const stageTableBody = document.getElementById("stageTableBody");
-      const tableArtifactList = document.getElementById("tableArtifactList");
-      const tableMdPreview = document.getElementById("tableMdPreview");
-      const tableFormulaBar = document.getElementById("tableFormulaBar");
 
       function writeShareableUrl(overrides = {}) {
         const params = new URLSearchParams(window.location.search);
         const next = {
-          view: overrides.view ?? state.viewMode,
           sample: overrides.sample ?? sampleSelect.value,
           method: overrides.method ?? methodSelect.value,
         };
@@ -1139,16 +839,6 @@ function buildHtmlPage() {
         const query = params.toString();
         const nextUrl = query ? window.location.pathname + "?" + query : window.location.pathname;
         window.history.replaceState({}, "", nextUrl);
-      }
-
-      function setView(mode) {
-        state.viewMode = mode;
-        const isStory = mode === "story";
-        viewStory.classList.toggle("active", isStory);
-        viewTable.classList.toggle("active", !isStory);
-        viewStoryBtn.classList.toggle("active", isStory);
-        viewTableBtn.classList.toggle("active", !isStory);
-        writeShareableUrl({ view: mode });
       }
 
       async function fetchJson(path, options = {}) {
@@ -1195,7 +885,6 @@ function buildHtmlPage() {
         state.selectedSampleLabel = sample.title || sampleId;
         transcriptPreview.value = sample.transcript_text || "";
         inputMeta.textContent = state.selectedSampleLabel + " · " + (sample.language || "zh-CN") + " · " + (sample.char_count || 0) + " chars";
-        ledgerSample.textContent = state.selectedSampleLabel;
         writeShareableUrl({ sample: sampleId });
       }
 
@@ -1226,14 +915,10 @@ function buildHtmlPage() {
         const rows = Array.isArray(artifacts) ? artifacts : [];
         if (!rows.length) {
           storyArtifactLinks.innerHTML = "";
-          tableArtifactList.innerHTML = "<li>No artifacts yet.</li>";
           return;
         }
         storyArtifactLinks.innerHTML = rows
           .map((item) => '<a href="' + item.download_url + '" target="_blank" rel="noreferrer">Download ' + String(item.type || "").toUpperCase() + "</a>")
-          .join("");
-        tableArtifactList.innerHTML = rows
-          .map((item) => '<li><a href="' + item.download_url + '" target="_blank" rel="noreferrer">' + String(item.type || "").toUpperCase() + "</a></li>")
           .join("");
       }
 
@@ -1291,44 +976,6 @@ function buildHtmlPage() {
         }
       }
 
-      function renderStageTable(stages) {
-        stageTableBody.innerHTML = "";
-        const rows = Array.isArray(stages) ? stages : [];
-        if (!rows.length) {
-          const emptyRow = document.createElement("tr");
-          const cell = document.createElement("td");
-          cell.colSpan = 7;
-          cell.textContent = "No stage data yet.";
-          emptyRow.appendChild(cell);
-          stageTableBody.appendChild(emptyRow);
-          return;
-        }
-
-        rows.forEach((stage, index) => {
-          const row = document.createElement("tr");
-          const columns = [
-            String(index + 1),
-            String(stage.stage || "-"),
-            String(stage.ts || "-"),
-            stageExplanations[String(stage.stage || "")] || "Pipeline stage event.",
-            shortKeys(stage.input),
-            shortKeys(stage.output),
-            stage.notes ? String(stage.notes) : "-",
-          ];
-          for (const [columnIndex, value] of columns.entries()) {
-            const cell = document.createElement("td");
-            cell.textContent = value;
-            if (columnIndex === 0) {
-              cell.className = "cell-index";
-            } else if (value.length > 24) {
-              cell.className = "cell-mono";
-            }
-            row.appendChild(cell);
-          }
-          stageTableBody.appendChild(row);
-        });
-      }
-
       function renderStatus(run, status, inspector) {
         const statusValue = String(status.status || "idle");
         const tone = statusTone(statusValue);
@@ -1341,21 +988,11 @@ function buildHtmlPage() {
           "<br/><b>Inspector mode:</b> " + (inspector.live ? "live stream" : "persisted trace"),
           "<br/><b>Updated:</b> " + new Date().toLocaleTimeString(),
         ].join("");
-
-        ledgerRunId.textContent = String(run?.run_id || "-");
-        ledgerJobId.textContent = String(run?.job_id || "-");
-        ledgerStatus.textContent = statusValue;
-        ledgerStatus.className = "status-chip " + tone;
-        ledgerStage.textContent = String(status.stage || "-");
-        ledgerInspector.textContent = inspector.live ? "live stream" : "persisted trace";
-        ledgerUpdated.textContent = new Date().toLocaleTimeString();
-        tableFormulaBar.textContent = '= stage("' + String(status.stage || "-") + '") -> ' + (stageExplanations[String(status.stage || "")] || "awaiting stage details");
       }
 
       function setMarkdownPreview(mdText) {
         const value = mdText ? String(mdText).slice(0, 3200) : "(run to see output)";
         storyMdPreview.textContent = value;
-        tableMdPreview.textContent = value;
       }
 
       function stopPolling() {
@@ -1378,7 +1015,6 @@ function buildHtmlPage() {
         renderArtifacts(artifacts.artifacts || []);
         renderFlow(stages, status.status || "idle");
         renderTimeline(stages);
-        renderStageTable(stages);
         setMarkdownPreview(payload.markdown_text || "");
 
         if (processing) {
@@ -1395,7 +1031,6 @@ function buildHtmlPage() {
         renderArtifacts([]);
         renderFlow([], "queued");
         renderTimeline([]);
-        renderStageTable([]);
         setMarkdownPreview("");
       }
 
@@ -1438,30 +1073,16 @@ function buildHtmlPage() {
           storySummary.textContent = "Run failed to start: " + (error && error.message ? error.message : String(error));
         }
       });
-      viewStoryBtn.addEventListener("click", () => setView("story"));
-      viewTableBtn.addEventListener("click", () => setView("table"));
       document.addEventListener("keydown", async (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !runBtn.disabled) {
           event.preventDefault();
           runBtn.click();
-          return;
-        }
-        if (event.altKey && event.key === "1") {
-          event.preventDefault();
-          setView("story");
-          return;
-        }
-        if (event.altKey && event.key === "2") {
-          event.preventDefault();
-          setView("table");
         }
       });
 
       methodSelect.value = initialMethod;
-      setView(initialView);
       renderFlow([], "idle");
       renderTimeline([]);
-      renderStageTable([]);
       loadSamples().catch((error) => {
         sampleError.textContent = "Failed to load samples: " + (error && error.message ? error.message : String(error));
       });
