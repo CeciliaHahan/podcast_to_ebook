@@ -692,7 +692,7 @@ const MERGE_CAPS = {
   appendixThemeQuotes: 6,
   draftTermsMin: 2,
 };
-const FULL_BOOK_LLM_MAX_CHARS = 32_000;
+const FULL_BOOK_LLM_MAX_CHARS = 80_000;
 const PROFILE_MERGE_CAPS: Record<TranscriptSourceProfile, typeof MERGE_CAPS> = {
   single: {
     ...MERGE_CAPS,
