@@ -6,6 +6,41 @@
       "title": "Mini Roundtable Sample",
       "language": "zh-CN",
       "notes": "Small local transcript sample for quick end-to-end iteration."
+    },
+    {
+      "id": "local:short-ai-fomo",
+      "file": "「一份短的」冷水烫 ｜No.37：how to 度过AI时代的焦虑和FOMO.txt",
+      "title": "冷水烫｜No.37：how to 度过AI时代的焦虑和FOMO",
+      "language": "zh-CN",
+      "notes": "Short sample. Use it to check the fast path and see whether the output becomes book-like without over-expanding."
+    },
+    {
+      "id": "local:high-density-iran",
+      "file": "「一份信息密度高的」Vol.258｜斩首行动之后：美国在划界，伊朗谁接盘？｜嘉宾：施展_原文.txt",
+      "title": "Vol.258｜斩首行动之后：美国在划界，伊朗谁接盘？｜嘉宾：施展",
+      "language": "zh-CN",
+      "notes": "High-density sample. Use it to check evidence fidelity, compression quality, and whether dense arguments stay readable."
+    },
+    {
+      "id": "local:speaker-shifts-vibe",
+      "file": "「一份说话人切换多的」071 _ Vibe Shift 三部曲：保守女性气质的回潮 The Return of Conservative Femininity_原文.txt",
+      "title": "071｜Vibe Shift 三部曲：保守女性气质的回潮",
+      "language": "zh-CN",
+      "notes": "Multi-speaker sample. Use it to check speaker transition handling, narrative continuity, and chapter coherence."
+    },
+    {
+      "id": "local:long-money-psychology",
+      "file": "「一份长的」85 金钱心理学｜那些你没花掉的钱，正在扩大你的人生半径.txt",
+      "title": "85｜金钱心理学｜那些你没花掉的钱，正在扩大你的人生半径",
+      "language": "zh-CN",
+      "notes": "Long sample. Use it to check long-context segmentation, chapter balance, and whether the pipeline stays stable on larger inputs."
+    },
+    {
+      "id": "local:noisy-east-asia-hiphop",
+      "file": "「一份比较脏的」vol.521 对谈嘻哈：三句话，让东亚小孩不再内耗！.txt",
+      "title": "vol.521 对谈嘻哈：三句话，让东亚小孩不再内耗！",
+      "language": "zh-CN",
+      "notes": "Noisy sample. Use it to check cleanup quality, transcript normalization, and resistance to messy source formatting."
     }
   ]
 }

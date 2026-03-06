@@ -8,10 +8,11 @@ const SYSTEM_PROMPT = [
   '3) 任何字段在证据不足时，正文里必须使用“未在原文中明确说明”，不得猜测。',
   "4) quote.text 必须为原文忠实摘录，允许删减口头语但不得改写含义；优先沿用原始 speaker 与 timestamp。",
   "5) chapters 顺序与数量必须与 chapter_plan 完全一致；每章内容仅能使用对应章的 context/evidence，不得跨章挪用引文。",
-  "6) 每章至少 2 条 quotes；action 项需动词开头且可执行；chapter 标题应与 chapter_plan 对齐并可轻微润色。",
+  "6) 每章至少 2 条 quotes；action 项需具体且可验证；chapter 标题应与 chapter_plan 对齐并可轻微润色。",
   "7) 输出中文，避免空泛口号和 AI 风格模板话；若任一约束冲突导致缺项，仍按 schema 返回完整字段（可用兜底短语）。",
   "8) 你必须优先保证 JSON 合法性，其次保证字段完备，其次再追求语言优雅。",
 ].join(" ");
+const CHAPTER_PATCH_TIMEOUT_CAP_MS = 45000;
 
 type LlmBookletQuote = {
   speaker: string;
@@ -88,7 +89,7 @@ export type LlmInspectorHooks = {
   onError?: (message: string) => void;
 };
 
-type PromptProfile = "baseline" | "strict_template_a";
+type PromptProfile = "baseline" | "strict_template_a" | "discussion_simple_v1_5";
 
 function cleanText(input: string, maxLength = 220): string {
   return input
@@ -306,7 +307,7 @@ function buildPrompt(params: {
       ].join("\n");
     })
     .join("\n");
-  const strictTemplateRules =
+  const profileRules =
     params.promptProfile === "strict_template_a"
       ? [
           "模板强化要求（Template A 严格模式）：",
@@ -315,7 +316,16 @@ function buildPrompt(params: {
           "- 可执行行动必须是动词开头、可当天执行的动作。",
           '- 证据不足时请使用“未在原文中明确说明”，不要编造。',
         ]
-      : [];
+      : params.promptProfile === "discussion_simple_v1_5"
+        ? [
+            "模板强化要求（Discussion v1.5 简洁模式）：",
+            "- 不要强行制造对立；若观点一致，写成“共同观点 + 各自补充例子”。",
+            "- points 请尽量写成“谁说了什么 + 观点 + 例子”的紧凑句，避免抽象术语。",
+            "- quote 优先引用能支撑观点的原句，正文结论必须能被 quote 追溯。",
+            "- actions 字段在本模式中写“后续可继续追问的问题”或“补充信息建议”，不要说教口吻。",
+            "- 标题可以轻松，正文必须准确、可回查，不得夸张改写。",
+          ]
+        : [];
 
   return [
     "任务：将播客转写整理成“知识小册子”结构化草稿（JSON）。",
@@ -360,13 +370,13 @@ function buildPrompt(params: {
     "- 每章 points 要具体，避免抽象套话。",
     "- 每章至少 2 条 quotes，优先保留有信息密度的原文句子。",
     "- 每章 explanation 需要可读、保守，不可脱离原文编造成因。",
-    "- 每章 actions 用动词开头，必须能执行。",
+    "- 每章 actions 需具体明确；strict_template_a 用可执行动作，discussion_simple_v1_5 用可继续追问的问题。",
     "- chapter[i].title 应与 chapter_plan[i] 对齐，可轻微润色但不得偏离主题。",
     "全局质检（生成前自查）：",
     "- TL;DR 每条都能在 transcript 中找到依据。",
     "- 引用里的时间戳与说话人尽量与原文一致。",
     "- 若 transcript 存在噪音/乱码，避免把噪音作为关键引用。",
-    ...strictTemplateRules,
+    ...profileRules,
     `上下文元信息:
 - title: ${params.title}
 - language: ${params.language}
@@ -503,7 +513,7 @@ export async function generateChapterPatchWithLlm(params: {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.min(config.llmTimeoutMs, 20000));
+  const timeout = setTimeout(() => controller.abort(), Math.min(config.llmTimeoutMs, CHAPTER_PATCH_TIMEOUT_CAP_MS));
   try {
     const strictClause =
       params.promptProfile === "strict_template_a"
@@ -513,7 +523,14 @@ export async function generateChapterPatchWithLlm(params: {
             "- actions 必须动词开头，可执行。",
             '- 缺少证据时请写“未在原文中明确说明”。',
           ].join("\n")
-        : "";
+        : params.promptProfile === "discussion_simple_v1_5"
+          ? [
+              "严格要求（Discussion v1.5 简洁模式）：",
+              "- points 写“谁说了什么 + 观点 + 例子”，不强行写成冲突。",
+              "- actions 写“后续可继续追问的问题”或“补充信息建议”，保持中性。",
+              '- 缺少证据时请写“未在原文中明确说明”。',
+            ].join("\n")
+          : "";
     const prompt = [
       "任务：基于给定章节 transcript 片段，输出该章节的结构化补丁 JSON。",
       "只输出 JSON 对象，不要 markdown，不要解释。",

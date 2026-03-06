@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:llm-config": "tsx src/config.llmDefaults.test.ts"
+    "test:llm-config": "tsx src/config.llmDefaults.test.ts",
+    "test:repro-run8ace": "tsx src/repro.run8ace.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

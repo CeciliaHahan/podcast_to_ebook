@@ -28,11 +28,8 @@ function previewText(input: string, maxChars = 2500): string {
   return `${input.slice(0, maxChars)}\n... <truncated>`;
 }
 
-function readGenerationMethod(value: unknown): GenerationMethod {
-  if (value === "A" || value === "B" || value === "C") {
-    return value;
-  }
-  return "B";
+function readGenerationMethod(_value: unknown): GenerationMethod {
+  return "C";
 }
 
 export async function createEpubFromTranscriptInline(params: {

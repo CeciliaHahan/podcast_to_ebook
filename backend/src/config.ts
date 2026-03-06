@@ -2,37 +2,18 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const OPENROUTER_DEFAULT_MODEL = "google/gemini-3-flash";
-const OPENAI_DEFAULT_MODEL = "gpt-4.1-mini";
-const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
-const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
-function looksLikeOpenRouterBaseUrl(baseUrl: string): boolean {
-  try {
-    return new URL(baseUrl).hostname.includes("openrouter.ai");
-  } catch {
-    return /openrouter/i.test(baseUrl);
-  }
-}
+const LLM_BASE_URL = "https://openrouter.ai/api/v1";
+const LLM_MODEL = "google/gemini-3-flash-preview";
+const LLM_TIMEOUT_MS = 90000;
+const LLM_INPUT_MAX_CHARS = 80000;
 
 export function resolveLlmConfig(env: NodeJS.ProcessEnv) {
-  const llmApiKey = env.OPENROUTER_API_KEY ?? env.OPENAI_API_KEY ?? "";
-  const llmBaseUrl =
-    env.OPENROUTER_BASE_URL ??
-    env.OPENAI_BASE_URL ??
-    (env.OPENROUTER_API_KEY ? OPENROUTER_DEFAULT_BASE_URL : OPENAI_DEFAULT_BASE_URL);
-  const useOpenRouterDefaults =
-    Boolean(env.OPENROUTER_API_KEY || env.OPENROUTER_BASE_URL) || looksLikeOpenRouterBaseUrl(llmBaseUrl);
-
   return {
-    llmApiKey,
-    llmBaseUrl,
-    llmModel:
-      env.OPENROUTER_MODEL ??
-      env.OPENAI_MODEL ??
-      (useOpenRouterDefaults ? OPENROUTER_DEFAULT_MODEL : OPENAI_DEFAULT_MODEL),
-    llmTimeoutMs: Number(env.OPENROUTER_TIMEOUT_MS ?? env.OPENAI_TIMEOUT_MS ?? 45000),
-    llmInputMaxChars: Number(env.OPENROUTER_INPUT_MAX_CHARS ?? env.OPENAI_INPUT_MAX_CHARS ?? 80000),
+    llmApiKey: env.OPENROUTER_API_KEY ?? env.OPENAI_API_KEY ?? "",
+    llmBaseUrl: LLM_BASE_URL,
+    llmModel: LLM_MODEL,
+    llmTimeoutMs: LLM_TIMEOUT_MS,
+    llmInputMaxChars: LLM_INPUT_MAX_CHARS,
   };
 }
 
