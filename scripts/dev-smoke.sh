@@ -25,26 +25,22 @@ CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/epub/from-transcript" \
   }')"
 echo "$CREATE_RESPONSE"
 
-JOB_ID="$(echo "$CREATE_RESPONSE" | sed -n 's/.*"job_id":"\([^"]*\)".*/\1/p')"
-if [ -z "$JOB_ID" ]; then
-  echo "Failed to parse job_id."
+if ! echo "$CREATE_RESPONSE" | rg -q '"status":"succeeded"'; then
+  echo "Create did not succeed."
   exit 1
 fi
 
-echo "Polling job status..."
-for _ in 1 2 3 4 5 6 7 8; do
-  STATUS_RESPONSE="$(curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID")"
-  echo "$STATUS_RESPONSE"
-  if echo "$STATUS_RESPONSE" | rg -q '"status":"succeeded"'; then
-    break
-  fi
-  sleep 1
-done
+EPUB_URL="$(node -e 'const data=JSON.parse(process.argv[1]); const row=(data.artifacts||[]).find((x)=>x.type==="epub"); if(!row||!row.download_url){process.exit(2)}; process.stdout.write(row.download_url);' "$CREATE_RESPONSE" || true)"
+if [ -z "$EPUB_URL" ]; then
+  echo "Failed to parse EPUB download URL from inline artifacts."
+  exit 1
+fi
 
-echo "Artifacts:"
-curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/artifacts"
+echo "Download EPUB artifact:"
+curl -fsS "$EPUB_URL" >/dev/null
+echo "EPUB download OK"
 echo
 
-echo "Inspector:"
-curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/inspector"
+echo "Inline inspector stages:"
+node -e 'const data=JSON.parse(process.argv[1]); console.log(JSON.stringify(data.stages||[], null, 2));' "$CREATE_RESPONSE"
 echo

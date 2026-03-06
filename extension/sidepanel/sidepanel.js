@@ -1,5 +1,4 @@
 const STORAGE_KEY = "pte_settings_v1";
-const LAST_JOB_KEY = "pte_last_job_v1";
 const DEFAULTS = {
   apiBaseUrl: "http://localhost:8080",
   token: "dev:cecilia@example.com",
@@ -29,7 +28,6 @@ const elements = {
   eventsList: document.getElementById("events-list"),
 };
 
-let pollTimer = null;
 let didAutoSwitchBaseUrl = false;
 const STATUS_LABELS = {
   idle: "待命",
@@ -363,51 +361,6 @@ async function apiRequest(path, method, body) {
   throw new Error(formatNetworkFetchMessage(path, baseCandidates, lastNetworkError));
 }
 
-async function fetchStatus(jobId) {
-  const data = await apiRequest(`/v1/jobs/${jobId}`, "GET");
-  renderStatus(data);
-  return data;
-}
-
-async function fetchArtifacts(jobId) {
-  const data = await apiRequest(`/v1/jobs/${jobId}/artifacts`, "GET");
-  renderArtifacts(data);
-}
-
-async function fetchInspector(jobId) {
-  const data = await apiRequest(`/v1/jobs/${jobId}/inspector`, "GET");
-  renderInspector(data);
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
-async function startPolling(jobId) {
-  stopPolling();
-  await storageSet({ [LAST_JOB_KEY]: jobId });
-  pollTimer = setInterval(async () => {
-    try {
-      clearError();
-      const job = await fetchStatus(jobId);
-      await fetchInspector(jobId);
-      if (job.status === "succeeded") {
-        await fetchArtifacts(jobId);
-        stopPolling();
-      }
-      if (job.status === "failed" || job.status === "canceled") {
-        stopPolling();
-      }
-    } catch (error) {
-      stopPolling();
-      renderError(error instanceof Error ? error.message : "轮询状态失败");
-    }
-  }, 1200);
-}
-
 async function handleCreateJob(event) {
   event.preventDefault();
   clearError();
@@ -437,14 +390,17 @@ async function handleCreateJob(event) {
 
     const created = await apiRequest("/v1/epub/from-transcript", "POST", payload);
     const createSucceeded = created.status === "succeeded";
+    if (!createSucceeded) {
+      throw new Error(`生成未成功返回，status=${created.status || "unknown"}`);
+    }
     renderStatus({
       job_id: created.job_id,
       status: created.status,
-      progress: createSucceeded ? 100 : 0,
-      stage: createSucceeded ? "completed" : "queued",
+      progress: 100,
+      stage: "completed",
     });
-    elements.artifactsList.innerHTML = "<li>正在等待 EPUB 产物...</li>";
-    elements.eventsList.innerHTML = "<li>正在等待调试阶段信息...</li>";
+    elements.artifactsList.innerHTML = "<li>未返回产物。</li>";
+    elements.eventsList.innerHTML = "<li>未返回调试阶段信息。</li>";
     const hasInlineArtifacts = Array.isArray(created.artifacts) && created.artifacts.length > 0;
     const hasInlineStages = Array.isArray(created.stages) && created.stages.length > 0;
     if (hasInlineArtifacts) {
@@ -453,22 +409,6 @@ async function handleCreateJob(event) {
     if (hasInlineStages) {
       renderInspector({ stages: created.stages });
     }
-    if (createSucceeded && hasInlineArtifacts && hasInlineStages) {
-      await storageSet({ [LAST_JOB_KEY]: created.job_id });
-      return;
-    }
-    if (createSucceeded) {
-      await fetchStatus(created.job_id);
-      if (!hasInlineStages) {
-        await fetchInspector(created.job_id);
-      }
-      if (!hasInlineArtifacts) {
-        await fetchArtifacts(created.job_id);
-      }
-      await storageSet({ [LAST_JOB_KEY]: created.job_id });
-      return;
-    }
-    await startPolling(created.job_id);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "提交任务失败");
   } finally {
@@ -483,27 +423,6 @@ function loadSample() {
   elements.episodeUrl.value = "https://example.com/episodes/sample";
   elements.transcriptText.value =
     "主持人：今天我们讨论如何把播客内容沉淀成可复用知识资产。\n嘉宾：先明确问题边界，再拆分结构，最后形成行动清单。\n主持人：如果听众只记住一件事，那就是把输入转成可执行输出。";
-}
-
-async function restoreLastJob() {
-  const stored = await storageGet([LAST_JOB_KEY]);
-  const lastJob = stored[LAST_JOB_KEY];
-  if (!lastJob) {
-    return;
-  }
-  try {
-    const status = await fetchStatus(lastJob);
-    await fetchInspector(lastJob);
-    if (status.status === "succeeded") {
-      await fetchArtifacts(lastJob);
-      return;
-    }
-    if (status.status === "queued" || status.status === "processing") {
-      await startPolling(lastJob);
-    }
-  } catch (_error) {
-    // Ignore restore errors; user can submit a new job.
-  }
 }
 
 async function init() {
@@ -523,7 +442,6 @@ async function init() {
   });
   elements.loadSample.addEventListener("click", loadSample);
   await loadSettings();
-  await restoreLastJob();
 }
 
 void init();
