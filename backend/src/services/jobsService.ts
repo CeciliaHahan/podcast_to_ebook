@@ -6,7 +6,12 @@ import {
   setJobInspectorTrace,
   updateJobStatusAndStage,
 } from "../repositories/jobsRepo.js";
-import type { GenerationMethod, InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
+import type {
+  GenerationMethod,
+  InspectorPushInput,
+  InspectorStageRecord,
+  PipelineVariant,
+} from "../repositories/jobsRepo.js";
 import type { CreateJobInput, OutputFormat } from "../types/domain.js";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -59,6 +64,10 @@ function readGenerationMethod(_value: unknown): GenerationMethod {
   return "C";
 }
 
+function readPipelineVariant(value: unknown): PipelineVariant {
+  return value === "simple-v1" ? "simple-v1" : "current";
+}
+
 async function runPipelineInline(params: {
   jobId: string;
   title?: string;
@@ -87,6 +96,7 @@ async function runPipelineInline(params: {
   const transcriptText =
     typeof params.rawInput.metadata?.transcript_text === "string" ? params.rawInput.metadata.transcript_text : "";
   const generationMethod = readGenerationMethod(params.rawInput.metadata?.generation_method);
+  const pipelineVariant = readPipelineVariant(params.rawInput.metadata?.pipeline_variant);
 
   pushStage({
     stage: "transcript",
@@ -100,6 +110,7 @@ async function runPipelineInline(params: {
       template_id: params.templateId,
       output_formats: params.outputFormats,
       generation_method: generationMethod,
+      pipeline_variant: pipelineVariant,
     },
     notes:
       transcriptText.length > 0
@@ -125,6 +136,7 @@ async function runPipelineInline(params: {
       sourceType: "transcript",
       sourceRef: params.sourceRef,
       generationMethod,
+      pipelineVariant,
       inspector: pushStage,
     });
 

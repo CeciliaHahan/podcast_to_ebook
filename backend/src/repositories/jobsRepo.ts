@@ -12,6 +12,7 @@ import { createId } from "../lib/ids.js";
 import type { CreateJobInput, JobStatus, OutputFormat, SourceType } from "../types/domain.js";
 import { config } from "../config.js";
 import { generateBookletDraftWithLlm, generateChapterPatchWithLlm, type LlmChapterPatch } from "../services/bookletLlm.js";
+import { generateSimpleBookletDraftWithLlm, type SimpleBookletDraft } from "../services/simpleBookletLlm.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -85,6 +86,7 @@ export type InspectorStageRecord = {
 
 export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;
 export type GenerationMethod = "A" | "B" | "C";
+export type PipelineVariant = "current" | "simple-v1";
 type TranscriptSourceProfile = "single" | "interview" | "discussion";
 type RenderTemplateProfile = "single-notes-v1" | "interview-notes-v1" | "discussion-roundtable-v1";
 
@@ -2522,6 +2524,410 @@ function mergeBookletWithLlmDraft(
   };
 }
 
+const SIMPLE_SEGMENT_MAX_CHARS = 60_000;
+
+type SimpleLengthSegment = {
+  segmentIndex: number;
+  label: string;
+  transcriptText: string;
+  range: string;
+  entryCount: number;
+};
+
+function formatSimpleSegmentEntry(entry: TranscriptEntry): string {
+  return `${entry.speaker} ${entry.timestamp}\n${entry.text}`;
+}
+
+function splitRawTranscriptByLength(transcriptBody: string, maxChars: number): string[] {
+  const paragraphs = transcriptBody
+    .split(/\r?\n\s*\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const chunks = paragraphs.length ? paragraphs : splitSentences(transcriptBody);
+  const segments: string[] = [];
+  let current = "";
+
+  for (const chunk of chunks) {
+    const next = current ? `${current}\n\n${chunk}` : chunk;
+    if (current && next.length > maxChars) {
+      segments.push(current);
+      current = chunk;
+      continue;
+    }
+    if (!current && chunk.length > maxChars) {
+      for (let offset = 0; offset < chunk.length; offset += maxChars) {
+        segments.push(chunk.slice(offset, offset + maxChars).trim());
+      }
+      current = "";
+      continue;
+    }
+    current = next;
+  }
+
+  if (current) {
+    segments.push(current);
+  }
+
+  return segments.filter(Boolean);
+}
+
+function extractBracketRange(transcriptText: string): string {
+  const timestamps = Array.from(
+    transcriptText.matchAll(/\[(\d{1,2}:\d{2}(?::\d{2})?)\s*->\s*(\d{1,2}:\d{2}(?::\d{2})?)\]/g),
+  );
+  const first = timestamps[0]?.[1];
+  const last = timestamps[timestamps.length - 1]?.[2];
+  if (!first || !last) {
+    return "原文片段";
+  }
+  return `${first} - ${last}`;
+}
+
+function hasReliableStructuredEntries(entries: TranscriptEntry[]): boolean {
+  if (!entries.length) {
+    return false;
+  }
+  const timestampCount = entries.filter((entry) => entry.timestamp && entry.timestamp !== FALLBACK_TIMESTAMP).length;
+  const speakerCount = new Set(entries.map((entry) => resolveSpeakerKey(entry.speaker))).size;
+  return timestampCount >= Math.max(3, Math.floor(entries.length * 0.15)) && speakerCount >= 2;
+}
+
+function planSimpleLengthSegments(transcriptText: string, entries: TranscriptEntry[]): SimpleLengthSegment[] {
+  const transcriptBody = extractTranscriptBody(transcriptText);
+  if (!transcriptBody.trim()) {
+    return [];
+  }
+
+  if (!hasReliableStructuredEntries(entries)) {
+    return splitRawTranscriptByLength(transcriptBody, SIMPLE_SEGMENT_MAX_CHARS).map((segmentText, index) => ({
+      segmentIndex: index + 1,
+      label: `part-${index + 1}`,
+      transcriptText: segmentText,
+      range: extractBracketRange(segmentText),
+      entryCount: 0,
+    }));
+  }
+
+  const segments: Array<{ transcriptText: string; chunk: TranscriptEntry[] }> = [];
+  let chunk: TranscriptEntry[] = [];
+  let current = "";
+
+  for (const entry of entries) {
+    const formatted = formatSimpleSegmentEntry(entry);
+    const next = current ? `${current}\n\n${formatted}` : formatted;
+    if (chunk.length && next.length > SIMPLE_SEGMENT_MAX_CHARS) {
+      segments.push({
+        transcriptText: current,
+        chunk,
+      });
+      chunk = [entry];
+      current = formatted;
+      continue;
+    }
+
+    chunk.push(entry);
+    current = next;
+  }
+
+  if (chunk.length && current) {
+    segments.push({
+      transcriptText: current,
+      chunk,
+    });
+  }
+
+  return segments.map((segment, index) => ({
+    segmentIndex: index + 1,
+    label: `part-${index + 1}`,
+    transcriptText: segment.transcriptText,
+    range: toRange(segment.chunk),
+    entryCount: segment.chunk.length,
+  }));
+}
+
+function rangeFromSimpleQuotes(quotes: BookletQuote[], fallbackRange: string): string {
+  const timestamps = quotes
+    .map((quote) => cleanLine(quote.timestamp))
+    .filter((timestamp) => timestamp && timestamp !== FALLBACK_TIMESTAMP);
+  if (!timestamps.length) {
+    return fallbackRange;
+  }
+  return `${timestamps[0]} - ${timestamps[timestamps.length - 1]}`;
+}
+
+function toSimpleBookletChapter(params: {
+  rawChapter: SimpleBookletDraft["chapters"][number];
+  chapterIndex: number;
+  fallbackRange: string;
+}): BookletChapter {
+  const title = cleanLine(params.rawChapter.title);
+  if (!title) {
+    throw new Error(`simple-v1 chapter ${params.chapterIndex} is missing a title`);
+  }
+
+  const points = uniqueNonEmpty(params.rawChapter.summary.map((item) => normalizeSummarySentence(item))).slice(0, 5);
+  const insights = uniqueNonEmpty(params.rawChapter.insights.map((item) => normalizeSummarySentence(item))).slice(0, 4);
+  const quotes = params.rawChapter.quotes
+    .map((quote) => ({
+      speaker: cleanLine(quote.speaker) || FALLBACK_SPEAKER,
+      timestamp: cleanLine(quote.timestamp) || FALLBACK_TIMESTAMP,
+      text: cleanLine(quote.text),
+    }))
+    .filter((quote) => quote.text)
+    .slice(0, 4);
+  const actions = uniqueNonEmpty(params.rawChapter.actions.map((item) => normalizeSummarySentence(item))).slice(0, 4);
+  const range = rangeFromSimpleQuotes(quotes, params.fallbackRange);
+
+  return {
+    index: params.chapterIndex,
+    sectionId: `chap_${String(params.chapterIndex + 3).padStart(2, "0")}`,
+    title,
+    range,
+    points,
+    quotes,
+    explanation: {
+      background: points[0] ?? insights[0] ?? "",
+      coreConcept: insights[0] ?? points[1] ?? "",
+      judgmentFramework: insights[1] ?? points[2] ?? "",
+      commonMisunderstanding: insights[2] ?? "",
+    },
+    actions,
+  };
+}
+
+async function buildSimpleBookletModel(params: {
+  jobId: string;
+  title: string;
+  language: string;
+  templateId: string;
+  sourceType: SourceType;
+  sourceRef: string;
+  transcriptText: string;
+  inspector?: (stage: InspectorPushInput) => void;
+}): Promise<BookletModel> {
+  const entries = parseTranscriptEntries(params.transcriptText);
+  const transcriptBody = extractTranscriptBody(params.transcriptText);
+  const sourceProfile = classifyTranscriptSourceProfile(entries, params.transcriptText);
+  const keywords = topicFocusKeywords(extractKeywords(transcriptBody), 6);
+  const resolvedTitle = resolveBookletTitle(params.title, sourceProfile.sourceProfile, keywords);
+  const renderTemplate = PROFILE_RENDER_TEMPLATE[sourceProfile.sourceProfile];
+  const segments = planSimpleLengthSegments(params.transcriptText, entries);
+
+  if (!segments.length) {
+    throw new Error("simple-v1 could not derive any transcript segments");
+  }
+
+  pushInspectorStage(params.inspector, {
+    stage: "normalization",
+    notes:
+      segments.length === 1
+        ? "simple-v1 selected single-pass generation."
+        : "simple-v1 selected length-only segmentation before LLM generation.",
+    input: {
+      pipeline_variant: "simple-v1",
+      parsed_entries: entries.length,
+      transcript_chars: transcriptBody.length,
+    },
+    output: {
+      segment_count: segments.length,
+      segment_ranges: segments.map((segment) => segment.range),
+      source_profile: sourceProfile.sourceProfile,
+      source_profile_confidence: sourceProfile.confidence,
+    },
+    config: {
+      segment_max_chars: SIMPLE_SEGMENT_MAX_CHARS,
+      render_template: renderTemplate,
+    },
+  });
+
+  const totalTarget = targetChapterCount(entries.length || segments.length * 24);
+  const chapterTargetPerSegment = Math.max(2, Math.min(6, Math.floor(totalTarget / segments.length) || 2));
+  const drafts: Array<{ segment: SimpleLengthSegment; draft: SimpleBookletDraft }> = [];
+
+  for (const segment of segments) {
+    const draft = await generateSimpleBookletDraftWithLlm({
+      title: resolvedTitle,
+      language: params.language,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      transcriptText: segment.transcriptText,
+      chapterTarget: chapterTargetPerSegment,
+      segmentLabel: segment.label,
+      inspector: {
+        onRequest: (request) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_request",
+            notes: `simple-v1 ${segment.label} (${segment.range})`,
+            input: {
+              prompt_preview: request.promptPreview,
+              segment_label: segment.label,
+              segment_range: segment.range,
+              segment_entry_count: segment.entryCount,
+            },
+            config: {
+              model: request.model,
+              temperature: request.temperature,
+              timeout_ms: request.timeoutMs,
+              input_max_chars: request.inputMaxChars,
+              endpoint: request.endpoint,
+            },
+          });
+        },
+        onResponse: (response) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_response",
+            notes: `simple-v1 ${segment.label} (${segment.range})`,
+            input: {
+              http_status: response.httpStatus,
+              raw_response_preview: response.rawContentPreview,
+              segment_label: segment.label,
+              segment_range: segment.range,
+            },
+            output: {
+              parsed_chapters: response.parsedChapterCount,
+              parsed_terms: response.parsedTermCount,
+              parsed_tldr: response.parsedTldrCount,
+              parse_ok: response.parseOk,
+            },
+          });
+        },
+        onError: (message) => {
+          pushInspectorStage(params.inspector, {
+            stage: "llm_response",
+            notes: `simple-v1 ${segment.label} failed: ${message}`,
+            input: {
+              segment_label: segment.label,
+              segment_range: segment.range,
+            },
+            output: {
+              parse_ok: false,
+            },
+          });
+        },
+      },
+    });
+
+    if (!draft) {
+      throw new Error(`simple-v1 LLM draft failed for ${segment.label}`);
+    }
+
+    drafts.push({ segment, draft });
+  }
+
+  const chapters: BookletChapter[] = [];
+  let chapterIndex = 1;
+  for (const item of drafts) {
+    for (const rawChapter of item.draft.chapters) {
+      chapters.push(
+        toSimpleBookletChapter({
+          rawChapter,
+          chapterIndex,
+          fallbackRange: item.segment.range,
+        }),
+      );
+      chapterIndex += 1;
+    }
+  }
+
+  if (!chapters.length) {
+    throw new Error("simple-v1 produced no chapters");
+  }
+
+  const generatedAtIso = new Date().toISOString();
+  const generatedDate = generatedAtIso.slice(0, 10);
+  const conclusion = cleanLine(drafts.map((item) => item.draft.oneLineConclusion).find(Boolean) ?? "");
+  const tldr = uniqueNonEmpty(drafts.flatMap((item) => item.draft.tldr.map((entry) => normalizeSummarySentence(entry)))).slice(
+    0,
+    7,
+  );
+  const terms = uniqueNonEmpty(
+    drafts.flatMap((item) => item.draft.terms.map((term) => `${cleanLine(term.term)}|||${cleanLine(term.definition)}`)),
+  )
+    .map((entry) => {
+      const [term, definition] = entry.split("|||");
+      return { term: term ?? "", definition: definition ?? "" };
+    })
+    .filter((term) => term.term && term.definition)
+    .slice(0, 6);
+  const chapterActions = chapters.flatMap((chapter) => chapter.actions);
+  const appendixThemes = chapters
+    .filter((chapter) => chapter.quotes.length)
+    .slice(0, 2)
+    .map((chapter, index) => ({
+      name: `主题 ${index + 1}：${chapter.title}`,
+      quotes: chapter.quotes.slice(0, 2),
+    }));
+
+  const model: BookletModel = {
+    meta: {
+      identifier: `urn:booklet:${params.jobId}`,
+      title: resolvedTitle,
+      language: params.language,
+      dcLanguage: languageToDc(params.language),
+      creator: BOOK_CREATOR,
+      generatedAtIso,
+      generatedDate,
+      sourceRef: params.sourceRef,
+      sourceType: params.sourceType,
+      templateId: params.templateId,
+      sourceProfile: sourceProfile.sourceProfile,
+      renderTemplate,
+    },
+    suitableFor: buildSuitableFor(topicFocusKeywords(keywords, 3)),
+    outcomes: [
+      "直接看到 transcript 被整理后的章节化结果。",
+      "保留关键引用、关键判断和可执行动作，方便人工复核。",
+      "把中间 JSON 作为主要质量边界，而不是把问题留到 EPUB 层。",
+    ],
+    oneLineConclusion: conclusion,
+    tldr,
+    chapters,
+    actionNow: chapterActions.slice(0, 2),
+    actionWeek: chapterActions.slice(2, 4),
+    actionLong: chapterActions.slice(4, 6),
+    terms,
+    appendixThemes,
+  };
+
+  const qualityIssues = countModelQualityIssues(model);
+  const qualityGate = isQualityGatePassed(qualityIssues);
+  pushInspectorStage(params.inspector, {
+    stage: "normalization",
+    notes: qualityGate.passed ? "simple-v1 quality gate passed." : "simple-v1 quality gate failed.",
+    input: {
+      pipeline_variant: "simple-v1",
+      segment_count: segments.length,
+      draft_count: drafts.length,
+      planned_chapters: chapters.length,
+    },
+    output: {
+      final_chapters: model.chapters.length,
+      chapter_titles: model.chapters.map((chapter) => chapter.title),
+      tldr_count: model.tldr.length,
+      terms_count: model.terms.length,
+      quality_issue_count: qualityIssues.length,
+      quality_warning_count: qualityGate.warningCount,
+      quality_blocking_count: qualityGate.blockingIssues.length,
+      quality_passed: qualityGate.passed,
+      quality_issues: qualityIssues,
+      quality_blocking_issues: qualityGate.blockingIssues,
+      quality_warning_issues: qualityGate.warningIssues,
+    },
+    config: {
+      source_type: params.sourceType,
+      profile_used: sourceProfile.sourceProfile,
+      profile_confidence: sourceProfile.confidence,
+      quality_gate: {
+        enabled: true,
+        warning_max: QUALITY_GATE_WARNING_MAX,
+        status: qualityGate.passed ? "passed" : "failed",
+      },
+    },
+  });
+
+  return model;
+}
+
 async function buildBookletModel(params: {
   jobId: string;
   title: string;
@@ -3782,6 +4188,7 @@ export async function createArtifacts(params: {
   sourceType: SourceType;
   sourceRef?: string;
   generationMethod?: GenerationMethod;
+  pipelineVariant?: PipelineVariant;
   inspector?: (stage: InspectorPushInput) => void;
 }) {
   await createArtifactsWithMode({
@@ -3800,6 +4207,7 @@ export async function createArtifactsEphemeral(params: {
   sourceType: SourceType;
   sourceRef?: string;
   generationMethod?: GenerationMethod;
+  pipelineVariant?: PipelineVariant;
   inspector?: (stage: InspectorPushInput) => void;
 }): Promise<ArtifactRecord[]> {
   return createArtifactsWithMode({
@@ -3818,10 +4226,11 @@ async function createArtifactsWithMode(params: {
   sourceType: SourceType;
   sourceRef?: string;
   generationMethod?: GenerationMethod;
+  pipelineVariant?: PipelineVariant;
   inspector?: (stage: InspectorPushInput) => void;
   persistToDatabase: boolean;
 }): Promise<ArtifactRecord[]> {
-  const booklet = await buildBookletModel({
+  const commonParams = {
     jobId: params.jobId,
     title: params.title,
     language: params.language,
@@ -3829,9 +4238,15 @@ async function createArtifactsWithMode(params: {
     templateId: params.templateId,
     sourceType: params.sourceType,
     sourceRef: params.sourceRef?.trim() || "N/A",
-    generationMethod: params.generationMethod,
     inspector: params.inspector,
-  });
+  };
+  const booklet =
+    params.pipelineVariant === "simple-v1"
+      ? await buildSimpleBookletModel(commonParams)
+      : await buildBookletModel({
+          ...commonParams,
+          generationMethod: params.generationMethod,
+        });
 
   const artifacts: ArtifactRecord[] = [];
   for (const format of params.formats) {

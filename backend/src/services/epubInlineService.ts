@@ -5,6 +5,7 @@ import {
   type GenerationMethod,
   type InspectorPushInput,
   type InspectorStageRecord,
+  type PipelineVariant,
 } from "../repositories/jobsRepo.js";
 
 function assertCompliance(input: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean }) {
@@ -32,6 +33,10 @@ function readGenerationMethod(_value: unknown): GenerationMethod {
   return "C";
 }
 
+function readPipelineVariant(value: unknown): PipelineVariant {
+  return value === "simple-v1" ? "simple-v1" : "current";
+}
+
 export async function createEpubFromTranscriptInline(params: {
   title: string;
   language: string;
@@ -46,6 +51,7 @@ export async function createEpubFromTranscriptInline(params: {
   const resolvedTitle = sanitizeTitle(params.title);
   const sourceRef = typeof params.metadata?.episode_url === "string" ? params.metadata.episode_url : undefined;
   const generationMethod = readGenerationMethod(params.metadata?.generation_method);
+  const pipelineVariant = readPipelineVariant(params.metadata?.pipeline_variant);
   const stages: InspectorStageRecord[] = [];
   const pushStage = (stage: InspectorPushInput) => {
     stages.push({
@@ -66,6 +72,7 @@ export async function createEpubFromTranscriptInline(params: {
       template_id: params.templateId,
       output_formats: ["epub"],
       generation_method: generationMethod,
+      pipeline_variant: pipelineVariant,
     },
   });
 
@@ -79,6 +86,7 @@ export async function createEpubFromTranscriptInline(params: {
     sourceType: "transcript",
     sourceRef,
     generationMethod,
+    pipelineVariant,
     inspector: pushStage,
   });
 
