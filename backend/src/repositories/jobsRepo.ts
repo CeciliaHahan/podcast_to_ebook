@@ -2632,6 +2632,12 @@ async function buildBookletModel(params: {
   };
 
   const method = params.generationMethod ?? "C";
+  const promptProfile =
+    method === "C"
+      ? sourceProfile.sourceProfile === "discussion"
+        ? "discussion_simple_v1_5"
+        : "strict_template_a"
+      : "baseline";
   if (method === "A") {
     const methodAQualityIssues = countModelQualityIssues(normalizedBaseModel);
     const methodAQualityGate = isQualityGatePassed(methodAQualityIssues);
@@ -2747,7 +2753,7 @@ async function buildBookletModel(params: {
         } satisfies LlmChapterPlanHint;
       }),
       transcriptText: transcriptBody,
-      promptProfile: method === "C" ? "strict_template_a" : "baseline",
+      promptProfile,
       inspector: {
         onRequest: (request) => {
           pushInspectorStage(params.inspector, {
@@ -2804,7 +2810,7 @@ async function buildBookletModel(params: {
         sourceType: params.sourceType,
         sourceRef: params.sourceRef,
         transcriptExcerpt: buildChapterPatchTranscriptExcerpt(chunk),
-        promptProfile: method === "C" ? "strict_template_a" : "baseline",
+        promptProfile,
       });
       if (patch) {
         chapterPatches.set(plan.chapterIndex, patch);
@@ -2894,7 +2900,7 @@ async function buildBookletModel(params: {
     config: {
       merge_caps: mergeCaps,
       source_type: params.sourceType,
-      prompt_profile: method === "C" ? "strict_template_a" : "baseline",
+      prompt_profile: promptProfile,
       profile_used: sourceProfile.sourceProfile,
       profile_confidence: sourceProfile.confidence,
       quality_gate: {
@@ -3047,20 +3053,27 @@ function buildJudgmentFrameworkItems(chapter: BookletChapter): string[] {
 
 function buildDiscussionConsensusAndOpenItems(chapter: BookletChapter): string[] {
   return uniqueNonEmpty([
-    `当前最小共识：${chapter.points[0] ?? chapter.explanation.background}`,
-    `主要分歧：${chapter.explanation.coreConcept}`,
-    `判断边界：${chapter.explanation.judgmentFramework}`,
-    `仍待验证：${chapter.explanation.commonMisunderstanding}`,
+    `这一段讲清楚了：${chapter.points[0] ?? chapter.explanation.background}`,
+    `主要观点补充：${chapter.explanation.coreConcept}`,
+    `判断依据：${chapter.explanation.judgmentFramework}`,
+    `还可以继续追问：${chapter.explanation.commonMisunderstanding}`,
   ]);
 }
 
 function buildDiscussionFollowupActions(chapter: BookletChapter): string[] {
-  const directActions = uniqueNonEmpty(chapter.actions.map((action) => cleanLine(action)).filter(Boolean));
+  const directActions = uniqueNonEmpty(
+    chapter.actions
+      .map((action) => cleanLine(action))
+      .filter(Boolean)
+      .map((action) => (/[？?]$/.test(action) ? action : `可继续补充：${action}`)),
+  );
   if (directActions.length) {
     return directActions;
   }
-  const fallback = buildJudgmentFrameworkItems(chapter).map((item) => cleanLine(item.replace(/^判断是否成立：/, "验证动作：")));
-  return fallback.length ? fallback : ["从本章争议里选 1 个命题，补齐证据后再做判断。"];
+  const fallback = buildJudgmentFrameworkItems(chapter).map((item) =>
+    cleanLine(item.replace(/^判断是否成立：/, "可继续追问：")),
+  );
+  return fallback.length ? fallback : ["这个讨论点暂时没有更多补充问题。"];
 }
 
 function buildDiscussionOpenQuestionLines(bodyChapters: RenderChapterView[], model: BookletModel): string[] {
@@ -3092,7 +3105,7 @@ function buildMarkdownContent(model: BookletModel): string {
     const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
     const discussionOpenQuestions = buildDiscussionOpenQuestionLines(layout.bodyChapters, model);
 
-    lines.push("## 讨论地图");
+    lines.push("## 这期主要在聊什么");
     lines.push("");
     if (discussionMapLines.length) {
       lines.push(...discussionMapLines.map((line) => `- ${line}`));
@@ -3100,10 +3113,10 @@ function buildMarkdownContent(model: BookletModel): string {
       lines.push(`> ${model.oneLineConclusion}`);
     }
     lines.push("");
-    lines.push("## 结论速览");
+    lines.push("## 主要讨论点速览");
     lines.push(...discussionSummaryLines.map((item, index) => `${index + 1}. ${item}`));
     lines.push("");
-    lines.push("## 正文目录");
+    lines.push("## 主要讨论点目录");
     lines.push(...layout.bodyChapters.map((item) => `- 第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`));
     lines.push("");
 
@@ -3111,29 +3124,29 @@ function buildMarkdownContent(model: BookletModel): string {
       const chapter = item.chapter;
       lines.push(`## 第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
       lines.push("");
-      lines.push("### 争议命题");
+      lines.push("### 讨论点");
       lines.push(`- ${chapter.title}（${chapter.range}）`);
       lines.push("");
-      lines.push("### 观点分歧（谁在主张什么）");
+      lines.push("### 每个人说了什么（观点与例子）");
       lines.push(...chapter.points.map((point) => `- ${point}`));
       lines.push("");
-      lines.push("### 证据锚点（原句 + 时间戳）");
+      lines.push("### 原句索引（带时间戳）");
       lines.push(...chapter.quotes.map((quote) => `- [${quote.timestamp}] **${quote.speaker}**：${quote.text}`));
       lines.push("");
-      lines.push("### 共识与未决");
+      lines.push("### 这一段讲清楚了什么");
       lines.push(...buildDiscussionConsensusAndOpenItems(chapter).map((itemLine) => `- ${itemLine}`));
       lines.push("");
-      lines.push("### 讨论后可验证动作");
+      lines.push("### 补充信息（可选）");
       lines.push(...buildDiscussionFollowupActions(chapter).map((itemLine) => `- ${itemLine}`));
       lines.push("");
     }
 
-    lines.push("## 共识清单与未决问题");
+    lines.push("## 这期讲清楚了什么、还没讲清楚什么");
     lines.push("");
-    lines.push("### 当前共识");
+    lines.push("### 已讲清楚");
     lines.push(...discussionSummaryLines.map((item) => `- ${item}`));
     lines.push("");
-    lines.push("### 仍待讨论");
+    lines.push("### 还没讲清楚");
     lines.push(...discussionOpenQuestions.map((item) => `- ${item}`));
     lines.push("");
   } else {
@@ -3253,7 +3266,7 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       const discussionSummaryLines = buildDiscussionSummaryFromBodyChapters(layout.bodyChapters);
       const discussionOpenQuestions = buildDiscussionOpenQuestionLines(layout.bodyChapters, model);
 
-      beginSection("讨论地图");
+      beginSection("这期主要在聊什么");
       doc.fontSize(20).text(model.meta.title);
       doc.moveDown(0.5);
       doc.fontSize(10).text(`Language: ${model.meta.language}`);
@@ -3267,13 +3280,13 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
         doc.fontSize(11).text(model.oneLineConclusion);
       }
 
-      beginSection("结论速览");
+      beginSection("主要讨论点速览");
       writePdfBulletList(
         doc,
         discussionSummaryLines.map((item, index) => `${index + 1}. ${item}`),
       );
 
-      beginSection("正文目录");
+      beginSection("主要讨论点目录");
       writePdfBulletList(
         doc,
         layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
@@ -3282,22 +3295,22 @@ async function writePdfArtifact(filePath: string, model: BookletModel): Promise<
       for (const item of layout.bodyChapters) {
         const chapter = item.chapter;
         beginSection(`第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`);
-        doc.fontSize(13).text("争议命题");
+        doc.fontSize(13).text("讨论点");
         writePdfBulletList(doc, [`${chapter.title}（${chapter.range}）`]);
-        doc.fontSize(13).text("观点分歧（谁在主张什么）");
+        doc.fontSize(13).text("每个人说了什么（观点与例子）");
         writePdfBulletList(doc, chapter.points);
-        doc.fontSize(13).text("证据锚点（原句 + 时间戳）");
+        doc.fontSize(13).text("原句索引（带时间戳）");
         writePdfQuoteList(doc, chapter.quotes);
-        doc.fontSize(13).text("共识与未决");
+        doc.fontSize(13).text("这一段讲清楚了什么");
         writePdfBulletList(doc, buildDiscussionConsensusAndOpenItems(chapter));
-        doc.fontSize(13).text("讨论后可验证动作");
+        doc.fontSize(13).text("补充信息（可选）");
         writePdfBulletList(doc, buildDiscussionFollowupActions(chapter));
       }
 
-      beginSection("共识清单与未决问题");
-      doc.fontSize(13).text("当前共识");
+      beginSection("这期讲清楚了什么、还没讲清楚什么");
+      doc.fontSize(13).text("已讲清楚");
       writePdfBulletList(doc, discussionSummaryLines);
-      doc.fontSize(13).text("仍待讨论");
+      doc.fontSize(13).text("还没讲清楚");
       writePdfBulletList(doc, discussionOpenQuestions);
     } else {
       beginSection("读前速览");
@@ -3405,7 +3418,7 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
     files.push({
       id: "chap_01",
       fileName: "chap_01.xhtml",
-      title: "讨论地图",
+      title: "这期主要在聊什么",
       bodyHtml: discussionMapLines.length
         ? listToHtml(discussionMapLines)
         : `<blockquote>${escapeHtml(model.oneLineConclusion)}</blockquote>`,
@@ -3413,13 +3426,13 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
     files.push({
       id: "chap_02",
       fileName: "chap_02.xhtml",
-      title: "结论速览",
+      title: "主要讨论点速览",
       bodyHtml: `<ol>${discussionSummaryLines.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`,
     });
     files.push({
       id: "chap_03",
       fileName: "chap_03.xhtml",
-      title: "正文目录",
+      title: "主要讨论点目录",
       bodyHtml: listToHtml(
         layout.bodyChapters.map((item) => `第 ${item.displayIndex} 章：${item.chapter.title}（${item.chapter.range}）`),
       ),
@@ -3432,15 +3445,15 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
         fileName: `${item.displaySectionId}.xhtml`,
         title: `第 ${item.displayIndex} 章：${chapter.title}（${chapter.range}）`,
         bodyHtml: [
-          "<h3>争议命题</h3>",
+          "<h3>讨论点</h3>",
           listToHtml([`${chapter.title}（${chapter.range}）`]),
-          "<h3>观点分歧（谁在主张什么）</h3>",
+          "<h3>每个人说了什么（观点与例子）</h3>",
           listToHtml(chapter.points),
-          "<h3>证据锚点（原句 + 时间戳）</h3>",
+          "<h3>原句索引（带时间戳）</h3>",
           quoteListToHtml(chapter.quotes),
-          "<h3>共识与未决</h3>",
+          "<h3>这一段讲清楚了什么</h3>",
           listToHtml(buildDiscussionConsensusAndOpenItems(chapter)),
-          "<h3>讨论后可验证动作</h3>",
+          "<h3>补充信息（可选）</h3>",
           listToHtml(buildDiscussionFollowupActions(chapter)),
         ].join(""),
       });
@@ -3449,11 +3462,11 @@ function buildEpubChapterFiles(model: BookletModel): EpubChapterFile[] {
     files.push({
       id: "chap_11",
       fileName: "chap_11.xhtml",
-      title: "共识清单与未决问题",
+      title: "这期讲清楚了什么、还没讲清楚什么",
       bodyHtml: [
-        "<h3>当前共识</h3>",
+        "<h3>已讲清楚</h3>",
         listToHtml(discussionSummaryLines),
-        "<h3>仍待讨论</h3>",
+        "<h3>还没讲清楚</h3>",
         listToHtml(discussionOpenQuestions),
       ].join(""),
     });
