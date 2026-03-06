@@ -1,18 +1,192 @@
 # Podcasts_to_ebooks Workspace
 
-A Chrome extension + backend that turns podcast transcripts into ebooks.
+A Chrome extension plus backend that turns podcast transcripts into EPUB ebooks.
 
-This project is used by one person, so the architecture should stay simple, explicit, and easy to debug.
+This repo is for one user. The system should stay simple, explicit, and easy to debug.
 
-## Project Scope (Read First)
+## TL;DR
 
-- This is a single-user product.
-- The core goal is high-quality transcript -> EPUB output.
-- Prefer straightforward implementations that are easy to reason about.
-- Do not overengineer for scale, workflows, or abstractions we do not need yet.
-- Add complexity only when it clearly improves output quality or fixes repeated real pain.
+- Primary path: send transcript text to `POST /v1/epub/from-transcript` and get EPUB artifacts plus inspector stages back in the same response.
+- Fastest debug loop: run `./run_e2e_debug.sh` and use the local observability dashboard.
+- PostgreSQL is optional for the primary EPUB flow. It is required for `/v1/jobs/*`, transcript history, and the dashboard sample/history views.
 
-## Flow Map + Glossary
+## Choose a Path
+
+### Path 1: Fast Local EPUB Run (No DB Required)
+
+Use this when you want the shortest transcript -> EPUB loop.
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Then call:
+
+- `POST /v1/epub/from-transcript`
+
+This path:
+
+- does not require Postgres
+- returns EPUB artifacts inline on success
+- returns inspector stages inline on success
+- is the current main path used by the side panel
+
+### Path 2: Full Debug Dashboard (DB Required)
+
+Use this when you want recent transcript runs, stage-by-stage inspection, and sample picking.
+
+```bash
+./run_e2e_debug.sh
+```
+
+This script handles:
+
+- PostgreSQL startup
+- stale `postmaster.pid` cleanup
+- backend env setup
+- migration run
+- backend build and start
+- dashboard launch via `scripts/observe-transcript-run.mjs`
+
+The dashboard runs against the DB-backed flow:
+
+- `POST /v1/jobs/from-transcript`
+- `GET /v1/jobs/{id}`
+- `GET /v1/jobs/{id}/artifacts`
+- `GET /v1/jobs/{id}/inspector`
+
+## What Exists Today
+
+- Chrome extension side panel submits transcript text.
+- Express backend runs generation inline in the request lifecycle. There is no worker queue in the current main path.
+- `POST /v1/epub/from-transcript` is DB-free and EPUB-only.
+- PostgreSQL is only required for `/v1/jobs/*` compatibility/history endpoints and dashboard flows.
+- Artifacts are written to local disk under `backend/.dev-artifacts/` and exposed by download URLs.
+- Successful inline runs return artifact metadata and inspector stage data in the same response.
+
+## Setup
+
+### Backend
+
+Required:
+
+- Node.js and npm
+- a copied env file: `backend/.env`
+
+Optional:
+
+- PostgreSQL 16 for DB-backed job routes and the observability dashboard
+
+Example env file:
+
+```bash
+HOST=0.0.0.0
+PORT=8080
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/podcasts_to_ebooks
+NODE_ENV=development
+PUBLIC_BASE_URL=http://localhost:8080
+OPENROUTER_API_KEY=
+```
+
+Meaning of the main env vars:
+
+- `PORT`: backend port. Default local value is `8080`.
+- `DATABASE_URL`: required only for `/v1/jobs/*` and dashboard history/sample features.
+- `PUBLIC_BASE_URL`: base URL used in generated download links.
+- `OPENROUTER_API_KEY`: needed only when the current generation path reaches LLM-backed stages.
+
+There is no pinned Node version in this repo yet. If you want stricter setup reproducibility later, add an engine field or `.nvmrc`.
+
+### Chrome Extension
+
+The extension is load-unpacked only right now.
+
+1. Open `chrome://extensions`
+2. Enable `Developer mode`
+3. Click `Load unpacked`
+4. Select the `extension/` folder
+5. Open the extension side panel
+6. Set:
+   - API Base URL: `http://localhost:8080`
+   - Bearer token: `dev:cecilia@example.com` or `dev-token`
+
+Important:
+
+- The current side panel submits directly to `POST /v1/epub/from-transcript`.
+- Settings are stored in `chrome.storage.local`.
+
+## Minimal API Example
+
+Use this when you want to verify the backend without opening Chrome.
+
+```bash
+curl -X POST http://localhost:8080/v1/epub/from-transcript \
+  -H 'Authorization: Bearer dev:cecilia@example.com' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Smoke Test Episode",
+    "language": "zh-CN",
+    "transcript_text": "这是用于 smoke test 的测试文本，验证 transcript 到 EPUB 的主流程。",
+    "template_id": "templateA-v0-book",
+    "metadata": {
+      "episode_url": "https://example.com/episodes/smoke"
+    },
+    "compliance_declaration": {
+      "for_personal_or_authorized_use_only": true,
+      "no_commercial_use": true
+    }
+  }'
+```
+
+Successful inline response shape:
+
+```json
+{
+  "job_id": "run_xxx",
+  "status": "succeeded",
+  "created_at": "2026-03-06T00:00:00.000Z",
+  "artifacts": [
+    {
+      "type": "epub",
+      "file_name": "run_xxx.epub",
+      "size_bytes": 123456,
+      "download_url": "http://localhost:8080/downloads/run_xxx/run_xxx.epub",
+      "expires_at": null
+    }
+  ],
+  "stages": [
+    {
+      "stage": "transcript",
+      "ts": "2026-03-06T00:00:00.000Z"
+    }
+  ],
+  "traceability": {
+    "source_type": "transcript",
+    "source_ref": "https://example.com/episodes/smoke",
+    "generated_at": "2026-03-06T00:00:01.000Z"
+  }
+}
+```
+
+Current API surface:
+
+| Method | Path | Current role |
+| --- | --- | --- |
+| `POST` | `/v1/epub/from-transcript` | Primary DB-free transcript -> EPUB entrypoint |
+| `POST` | `/v1/jobs/from-transcript` | DB-backed compatibility and dashboard entrypoint |
+| `GET` | `/v1/jobs/{id}` | DB-backed status polling |
+| `GET` | `/v1/jobs/{id}/artifacts` | DB-backed artifact listing |
+| `GET` | `/v1/jobs/{id}/inspector` | DB-backed inspector trace |
+
+Auth for local dev:
+
+- `Authorization: Bearer dev-token`
+- `Authorization: Bearer dev:you@example.com`
+
+## Concepts
 
 ### System Flow Map (As-Is)
 
@@ -65,7 +239,21 @@ flowchart TD
   end
 ```
 
-### Glossary (CN/EN, short)
+### Two Important Terms
+
+`compliance_declaration`
+
+- This is not a passive label.
+- Both fields must be `true`, or the API rejects the request.
+- Today it means: personal use or explicitly authorized use only, and no commercial use.
+
+`generation_method = C`
+
+- This is the only active method today.
+- The backend currently forces generation method `C` even if other metadata values are sent.
+- Treat it as current implementation detail plus compatibility marker, not a user-configurable strategy switch.
+
+### Short Glossary
 
 | 中文术语 | English Term | 一句话定义 |
 | --- | --- | --- |
@@ -75,72 +263,28 @@ flowchart TD
 | 数据流 | Data Flow | 数据在各阶段如何变形与传递。 |
 | 质量门 | Quality Gate | 渲染前的结构和内容检查机制。 |
 | 证据约束 | Evidence Constraint | 引用与结论需可在原文中找到支持。 |
-| 产物 | Artifact | 生成的 EPUB/PDF/MD 文件。 |
+| 产物 | Artifact | 生成的 EPUB 文件和调试相关输出。 |
 | 内联返回 | Inline Response | 同一个请求直接返回产物与阶段信息。 |
 | 可观测性 | Observability | 可追踪系统内部阶段与数据状态。 |
 
 Full version: `docs/system-flow-map-and-glossary.md`
 
-## What Exists Today
+## Debugging
 
-- Chrome extension side panel submits transcript text.
-- Express backend runs generation inline (same request lifecycle, no worker queue).
-- `POST /v1/epub/from-transcript` is now DB-free for core transcript -> EPUB runs.
-- PostgreSQL is only required for `/v1/jobs/*` compatibility/history endpoints.
-- Artifacts are written to local disk (`.dev-artifacts/`) and exposed via download URLs.
-- Primary endpoint (`/v1/epub/from-transcript`) returns artifact + inspector data inline when generation succeeds.
-
-## Quick Start
-
-```bash
-cd backend
-cp .env.example .env
-npm install
-psql "$DATABASE_URL" -f migrations/0001_init.sql
-npm run dev
-```
-
-Or from repo root:
-
-```bash
-./scripts/dev-up.sh
-```
-
-If you only use `POST /v1/epub/from-transcript`, Postgres is optional.
-If you use `/v1/jobs/*` or transcript history APIs, Postgres is required.
-
-## Live E2E Observability Dashboard
-
-Use this when you want a result-first transcript -> EPUB loop with visible stage-by-stage progress.
-
-One command startup (recommended):
+The main debug tool is the local observability dashboard:
 
 ```bash
 ./run_e2e_debug.sh
 ```
 
-This script handles:
-
-- PostgreSQL startup + stale `postmaster.pid` cleanup
-- backend env/migration/build/start
-- dashboard launch (`scripts/observe-transcript-run.mjs`)
-
-Manual dashboard-only start (if backend is already running):
-
-```bash
-node scripts/observe-transcript-run.mjs
-```
-
 What you get:
 
-- sample picker (local samples + recent transcript runs)
-- one-click E2E run (`/v1/jobs/from-transcript`)
-- `Version A Storyboard`: narrative flow + stage cards
-- live stage timeline (`transcript`, `normalization`, `llm_request`, `llm_response`, etc.)
-- final EPUB + Markdown result panel
-- shareable debug state in URL query:
-  - `method=C`
-  - `sample=<sample_id>`
+- sample picker using local transcript samples plus recent DB-backed runs
+- one-click E2E run against `/v1/jobs/from-transcript`
+- stage cards and timeline
+- live inspector events such as `transcript`, `normalization`, `llm_request`, and `llm_response`
+- final EPUB and Markdown result panels for comparison
+- shareable debug state in URL query
 
 Local sample files live in:
 
@@ -149,39 +293,15 @@ tasks/transcript-samples/
 data/transcripts/
 ```
 
-## API Surface (Current)
+If the backend is already running, you can start only the dashboard:
 
-| Method | Path | Status |
-| --- | --- | --- |
-| `POST` | `/v1/epub/from-transcript` | Primary DB-free transcript -> EPUB entrypoint (EPUB-only, no `output_formats` required, inline artifacts/inspector on success) |
-| `POST` | `/v1/jobs/from-transcript` | Backward-compatible DB-backed transcript entrypoint |
-| `GET` | `/v1/jobs/{id}` | Used for status polling |
-| `GET` | `/v1/jobs/{id}/artifacts` | Used for downloads |
-| `GET` | `/v1/jobs/{id}/inspector` | Used for debug trace |
-
-Auth for local dev:
-
-- `Authorization: Bearer dev-token`
-- `Authorization: Bearer dev:you@example.com`
-
-## Architecture (Today)
-
-```mermaid
-flowchart TD
-  A[Extension side panel] --> B[POST /v1/epub/from-transcript]
-  B --> C[runPipelineInline]
-  C --> D[buildBookletModel]
-  D --> E[optional LLM enrichment]
-  E --> F[render artifacts: epub/md/pdf]
-  F --> G[write files under .dev-artifacts]
-  G --> H[inline response: artifacts + inspector stages]
-  H --> I[Extension shows download immediately]
+```bash
+node scripts/observe-transcript-run.mjs
 ```
 
-Important: there is no background queue right now. The pipeline runs inline in the backend process.
-`/v1/jobs/*` remains as DB-backed compatibility mode.
+## Roadmap
 
-## Target Simplification (Planned)
+### Target Simplification (Planned)
 
 ```mermaid
 flowchart TD
@@ -194,27 +314,60 @@ flowchart TD
   G --> H[return file response]
 ```
 
-Optional lightweight record (only if needed later): save one `run` row for audit/debug, but no queue semantics.
+The intended simplification direction:
 
-## Transcript -> EPUB Pipeline (Core Logic)
-
-```mermaid
-flowchart LR
-  A[Raw transcript] --> B[Parse speaker/timestamp/text]
-  B --> C[Clean noise and normalize text]
-  C --> D[Detect topic boundaries]
-  D --> E[Create chapter plan]
-  E --> F[Assemble base BookModel]
-  F --> G[Optional LLM enhancement]
-  G --> H[Quality checks for EPUB validity]
-  H --> I[Render EPUB package]
-```
+- keep one obvious transcript -> EPUB path
+- keep inspector visibility, but move it behind normal happy-path usage
+- avoid queue semantics unless audit/debug needs prove they are necessary
 
 ## Failure Policy
 
 - Do not hide failures with silent fallbacks.
-- If LLM mode is enabled and fails, return explicit error details.
-- Keep deterministic (non-LLM) mode explicit, not implicit.
+- If a request needs LLM-backed behavior and that path fails, surface the error clearly.
+- Keep deterministic behavior explicit so quality regressions stay visible.
+
+## Troubleshooting
+
+### `DB_REQUIRED` error
+
+Meaning:
+
+- You called a DB-backed route without `DATABASE_URL`.
+
+Fix:
+
+- Use `POST /v1/epub/from-transcript` for DB-free runs.
+- Or configure Postgres and use `./run_e2e_debug.sh`.
+
+### Backend health check fails
+
+Check:
+
+- `http://localhost:8080/healthz`
+
+Common causes:
+
+- port `8080` already taken
+- backend build failed
+- missing env file
+
+### Dashboard cannot start Postgres
+
+Common causes:
+
+- PostgreSQL 16 is not installed at the Homebrew path expected by `run_e2e_debug.sh`
+- the Postgres data directory was never initialized
+- stale `postmaster.pid` blocks startup
+
+The script already tries to remove a stale `postmaster.pid` when the recorded process no longer exists.
+
+### Extension cannot talk to backend
+
+Check:
+
+- API Base URL is `http://localhost:8080`
+- Bearer token is `dev-token` or `dev:cecilia@example.com`
+- backend health endpoint responds
 
 ## Repo Map
 
@@ -233,3 +386,10 @@ flowchart LR
 ├── scripts/
 └── tasks/method-compare/
 ```
+
+## Deep Docs
+
+- `docs/openapi.v1.yaml`
+- `docs/v1-spec.md`
+- `docs/system-flow-map-and-glossary.md`
+- `docs/simplify-backend-plan.md`
