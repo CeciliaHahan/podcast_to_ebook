@@ -22,7 +22,7 @@ const cases: Case[] = [
     expected: {
       apiKey: "or-key",
       baseUrl: "https://openrouter.ai/api/v1",
-      model: "google/gemini-2.0-flash-001",
+      model: "google/gemini-3-flash-preview",
       timeoutMs: 90000,
       inputMaxChars: 80000,
     },
@@ -39,7 +39,7 @@ const cases: Case[] = [
     expected: {
       apiKey: "oa-key",
       baseUrl: "https://openrouter.ai/api/v1",
-      model: "google/gemini-2.0-flash-001",
+      model: "google/gemini-3-flash-preview",
       timeoutMs: 90000,
       inputMaxChars: 80000,
     },
@@ -56,7 +56,7 @@ const cases: Case[] = [
     expected: {
       apiKey: "or-key",
       baseUrl: "https://openrouter.ai/api/v1",
-      model: "google/gemini-2.0-flash-001",
+      model: "google/gemini-3-flash-preview",
       timeoutMs: 90000,
       inputMaxChars: 80000,
     },
