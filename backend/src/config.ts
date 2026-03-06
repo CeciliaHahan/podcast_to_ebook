@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const LLM_BASE_URL = "https://openrouter.ai/api/v1";
-const LLM_MODEL = "google/gemini-3-flash";
+const LLM_MODEL = "google/gemini-2.0-flash-001";
 const LLM_TIMEOUT_MS = 90000;
 const LLM_INPUT_MAX_CHARS = 80000;
 
