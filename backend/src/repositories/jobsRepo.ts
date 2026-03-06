@@ -723,7 +723,7 @@ const PROFILE_MERGE_CAPS: Record<TranscriptSourceProfile, typeof MERGE_CAPS> = {
   discussion: {
     ...MERGE_CAPS,
     chapterPoints: 4,
-    chapterActions: 3,
+    chapterActions: 2,
     suitableFor: 4,
     terms: 6,
   },
@@ -2159,9 +2159,15 @@ function chapterQuotesFromChunk(points: string[], chunk: TranscriptEntry[]): Boo
   }));
 }
 
-function chapterActionsFromPoints(points: string[]): string[] {
+function chapterActionsFromPoints(points: string[], profile: TranscriptSourceProfile): string[] {
   const first = shorten(points[0] ?? "选出本章最关键观点", 28);
   const second = shorten(points[1] ?? "补齐这一观点的证据链", 28);
+  if (profile === "discussion") {
+    return [
+      `围绕“${first}”，还缺哪条原句证据可以把这点讲清楚？`,
+      `如果观点大方向一致，关于“${second}”还能补充哪种场景例子？`,
+    ];
+  }
   return [
     `把“${first}”改写成 3 步执行清单，并设定截止时间。`,
     `从本章引用中挑 1 条证据，验证“${second}”是否成立。`,
@@ -2292,7 +2298,11 @@ function ensureConsecutiveUniqueChapterTitles(chapters: BookletChapter[]): Bookl
   return out;
 }
 
-function createFallbackChapterPatch(chapter: BookletChapter | undefined, title: string): LlmChapterPatch {
+function createFallbackChapterPatch(
+  chapter: BookletChapter | undefined,
+  title: string,
+  profile: TranscriptSourceProfile,
+): LlmChapterPatch {
   const resolvedTitle = cleanBookletField(title, 48) || `第 ${chapter?.index ?? "?"} 章`;
   const fallbackPoints = uniqueNonEmpty((chapter?.points ?? []).map((item) => cleanBookletField(item, 120)).filter(Boolean));
   const fallbackActions = uniqueNonEmpty(
@@ -2323,9 +2333,13 @@ function createFallbackChapterPatch(chapter: BookletChapter | undefined, title: 
       fallbackActions.slice(0, 4),
       2,
       (index) =>
-        index === 0
-          ? `把“${resolvedTitle}”拆成 3 步执行清单，并设定截止时间。`
-          : "从本章引用中挑 1 条证据，验证行动是否可执行。",
+        profile === "discussion"
+          ? index === 0
+            ? `关于“${resolvedTitle}”，还缺哪条原句证据可以补齐？`
+            : "这个讨论点在不同人群里会有什么差异？"
+          : index === 0
+            ? `把“${resolvedTitle}”拆成 3 步执行清单，并设定截止时间。`
+            : "从本章引用中挑 1 条证据，验证行动是否可执行。",
     ),
   };
 }
@@ -2560,7 +2574,7 @@ async function buildBookletModel(params: {
       points,
       quotes,
       explanation,
-      actions: chapterActionsFromPoints(points),
+      actions: chapterActionsFromPoints(points, sourceProfile.sourceProfile),
     };
   });
   const chapters = ensureConsecutiveUniqueChapterTitles(rawChapters);
@@ -2818,7 +2832,7 @@ async function buildBookletModel(params: {
       }
       chapterPatches.set(
         plan.chapterIndex,
-        createFallbackChapterPatch(chapterByIndex.get(plan.chapterIndex), plan.title),
+        createFallbackChapterPatch(chapterByIndex.get(plan.chapterIndex), plan.title, sourceProfile.sourceProfile),
       );
       deterministicFallbackPatchIndices.push(plan.chapterIndex);
     }
