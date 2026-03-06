@@ -442,6 +442,21 @@ function renderDetailPage(result) {
 </html>`;
 }
 
+function renderMarkdownSummary(results) {
+  const lines = [
+    "| Sample | Variant | ms | LLM req | Parse fail | Full skip | Patch ch | Quality pass | Quality issues | Placeholders | Boilerplate actions | Timestamps |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ];
+
+  for (const item of results) {
+    const summary = item.summary;
+    lines.push(
+      `| ${summary.sampleId} | ${summary.variant} | ${summary.durationMs} | ${summary.llmRequestCount} | ${summary.parseFailures} | ${summary.fullBookSkipped} | ${summary.chapterPatchCount} | ${summary.qualityPassed} | ${summary.qualityIssueCount} | ${summary.placeholderCount} | ${summary.boilerplateActionCount} | ${summary.timestampCount} |`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
 async function runVariantOnSample({ cfg, sample, variant, runDir }) {
   const sampleDir = path.join(runDir, slugify(sample.id));
   const variantDir = path.join(sampleDir, slugify(variant.name));
@@ -539,6 +554,7 @@ async function main() {
   }
 
   await fs.writeFile(path.join(runDir, "index.html"), renderIndexPage(runId, results), "utf8");
+  await fs.writeFile(path.join(runDir, "summary-table.md"), renderMarkdownSummary(results), "utf8");
   await fs.writeFile(
     path.join(runDir, "run-summary.json"),
     JSON.stringify(
