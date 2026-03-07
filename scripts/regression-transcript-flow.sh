@@ -12,10 +12,6 @@ const payload = {
   transcript_text: "这是用于回归测试的转写文本。我们需要验证任务创建、状态查询、产物下载和 inspector 阶段信息都可用。",
   template_id: "templateA-v0-book",
   metadata: { episode_url: "https://example.com/regression" },
-  compliance_declaration: {
-    for_personal_or_authorized_use_only: true,
-    no_commercial_use: true,
-  },
 };
 process.stdout.write(JSON.stringify(payload));
 ')"
