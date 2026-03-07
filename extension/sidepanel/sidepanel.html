@@ -76,6 +76,7 @@
             </div>
             <div class="step-action">
               <button type="button" id="btn-view-notes" class="ghost small" hidden>查看</button>
+              <button type="button" id="btn-process-notes" class="ghost small" hidden>过程</button>
             </div>
           </div>
           <!-- Step 2 -->
@@ -87,6 +88,7 @@
             </div>
             <div class="step-action">
               <button type="button" id="btn-view-outline" class="ghost small" hidden>查看</button>
+              <button type="button" id="btn-process-outline" class="ghost small" hidden>过程</button>
             </div>
           </div>
           <!-- Step 3 -->
@@ -98,6 +100,7 @@
             </div>
             <div class="step-action">
               <button type="button" id="btn-view-draft" class="ghost small" hidden>查看</button>
+              <button type="button" id="btn-process-draft" class="ghost small" hidden>过程</button>
             </div>
           </div>
           <!-- Step 4 -->
@@ -110,17 +113,14 @@
             <div class="step-action" id="epub-download-container">
               <!-- Download link will be inserted here -->
             </div>
+            <div class="step-action">
+              <button type="button" id="btn-process-epub" class="ghost small" hidden>过程</button>
+            </div>
           </div>
         </div>
 
         <pre id="error-box" hidden></pre>
         
-        <details class="details-card" style="margin-top: 16px;">
-          <summary>调试日志</summary>
-          <div class="details-body" style="padding: 0; background: #f8fafc; border-radius: 0 0 10px 10px;">
-            <ul id="events-list"></ul>
-          </div>
-        </details>
       </section>
     </main>
 
@@ -175,6 +175,17 @@
           <h3 id="booklet-draft-title"></h3>
           <div id="booklet-draft-sections"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Process Detail Modal -->
+    <div id="modal-process" class="modal-panel slide-out">
+      <div class="modal-header">
+        <h2 id="process-modal-title">生成过程</h2>
+        <button class="close-modal icon-btn" data-target="modal-process">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="process-content"></div>
       </div>
     </div>
 

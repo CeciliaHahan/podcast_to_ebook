@@ -283,7 +283,7 @@ async function callJsonChatCompletion(params) {
         reasoning: baseUrl.includes("openrouter.ai") ? { effort: reasoningEffort } : null,
       },
       input: {
-        prompt_preview: params.prompt.slice(0, 5_000),
+        prompt_preview: params.prompt,
       },
     });
 
@@ -300,7 +300,7 @@ async function callJsonChatCompletion(params) {
       stage: "llm_response",
       output: {
         http_status: response.status,
-        raw_content_preview: typeof content === "string" ? content.slice(0, 3_000) : null,
+        raw_content_preview: typeof content === "string" ? content : null,
       },
     });
 
@@ -360,7 +360,7 @@ export async function createWorkingNotesFromTranscript(params) {
       transcript_chars: params.transcriptText.length,
       source_type: "transcript",
       source_ref: sourceRef ?? null,
-      transcript_preview: params.transcriptText.slice(0, 2_500),
+      transcript_preview: params.transcriptText,
     },
     config: {
       flow: "transcript_to_working_notes",
@@ -421,7 +421,7 @@ export async function createBookletOutlineFromWorkingNotes(params) {
       source_ref: sourceRef ?? null,
       section_count: params.workingNotes.sections.length,
       summary_count: params.workingNotes.summary.length,
-      working_notes_preview: JSON.stringify(params.workingNotes, null, 2).slice(0, 2_500),
+      working_notes_preview: JSON.stringify(params.workingNotes, null, 2),
     },
     config: {
       flow: "working_notes_to_booklet_outline",
@@ -479,8 +479,8 @@ export async function createBookletDraftFromOutline(params) {
       source_ref: sourceRef ?? null,
       outline_section_count: params.bookletOutline.sections.length,
       notes_section_count: params.workingNotes.sections.length,
-      outline_preview: JSON.stringify(params.bookletOutline, null, 2).slice(0, 2_500),
-      working_notes_preview: JSON.stringify(params.workingNotes, null, 2).slice(0, 2_500),
+      outline_preview: JSON.stringify(params.bookletOutline, null, 2),
+      working_notes_preview: JSON.stringify(params.workingNotes, null, 2),
     },
     config: {
       flow: "booklet_outline_to_booklet_draft",
