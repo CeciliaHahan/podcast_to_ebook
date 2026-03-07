@@ -3,26 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>播客转电子书工作台</title>
+    <title>播客转电子书</title>
     <link rel="stylesheet" href="./sidepanel.css" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a"></div>
     <div class="bg-shape bg-shape-b"></div>
+    
     <main class="layout">
-      <header class="card hero">
+      <header class="top-nav">
         <h1>播客转 EPUB</h1>
+        <button id="open-settings" class="icon-btn" aria-label="设置">⚙️</button>
       </header>
 
-      <section class="card composer">
-        <h2>生成任务</h2>
+      <!-- VIEW 1: Input -->
+      <section id="view-input" class="card composer active-view">
         <form id="transcript-form">
           <label>
             节目标题（可选）
             <input id="title" type="text" maxlength="300" placeholder="留空将自动生成标题" />
-            <span class="micro-hint">留空后会从转录文本自动提取标题。</span>
           </label>
-          <input id="language" type="hidden" value="zh-CN" required />
+          <input id="language" type="hidden" value="zh-CN" />
           <details class="details-card">
             <summary>高级选项</summary>
             <div class="details-body">
@@ -30,51 +31,95 @@
                 节目链接（可选）
                 <input id="episode-url" type="url" placeholder="https://example.com/episode/1" />
               </label>
+              <div class="actions" style="margin-top: 8px;">
+                <button id="load-sample" type="button" class="ghost">填充示例文本</button>
+              </div>
             </div>
           </details>
           <label>
             转录文本
             <textarea id="transcript-text" required maxlength="80000" placeholder="粘贴完整转录文本"></textarea>
           </label>
-          <div class="primary-actions">
-            <button id="generate-working-notes" type="button" class="ghost">先看 Working Notes</button>
-            <button id="generate-booklet-outline" type="button" class="ghost">继续生成 Outline</button>
-            <button id="generate-booklet-draft" type="button" class="ghost">继续生成 Draft</button>
-            <button id="submit-job" type="submit">导出 EPUB</button>
-          </div>
+          <button id="start-pipeline" type="submit" class="large">生成 EPUB</button>
         </form>
       </section>
 
-      <section class="card status">
-        <h2>任务状态</h2>
-        <div class="status-line">
-          <span>当前任务</span>
-          <code id="job-id">-</code>
+      <!-- VIEW 2: Stepper Pipeline -->
+      <section id="view-pipeline" class="card pipeline hidden-view">
+        <div class="pipeline-header">
+          <h2>生成进度</h2>
+          <button id="reset-pipeline" type="button" class="ghost small">返回修改</button>
         </div>
-        <div class="status-grid">
-          <p><strong>状态：</strong> <span id="job-status">待命</span></p>
-          <p><strong>阶段：</strong> <span id="job-stage">-</span></p>
-          <p><strong>进度：</strong> <span id="job-progress">0%</span></p>
+
+        <div class="stepper">
+          <!-- Step 1 -->
+          <div class="step" id="step-notes">
+            <div class="step-indicator">1</div>
+            <div class="step-content">
+              <div class="step-title">提取 Working Notes</div>
+              <div class="step-status">等待中</div>
+            </div>
+            <div class="step-action">
+              <button type="button" id="btn-view-notes" class="ghost small" hidden>查看</button>
+            </div>
+          </div>
+          <!-- Step 2 -->
+          <div class="step" id="step-outline">
+            <div class="step-indicator">2</div>
+            <div class="step-content">
+              <div class="step-title">整理 Booklet Outline</div>
+              <div class="step-status">等待中</div>
+            </div>
+            <div class="step-action">
+              <button type="button" id="btn-view-outline" class="ghost small" hidden>查看</button>
+            </div>
+          </div>
+          <!-- Step 3 -->
+          <div class="step" id="step-draft">
+            <div class="step-indicator">3</div>
+            <div class="step-content">
+              <div class="step-title">撰写 Booklet Draft</div>
+              <div class="step-status">等待中</div>
+            </div>
+            <div class="step-action">
+              <button type="button" id="btn-view-draft" class="ghost small" hidden>查看</button>
+            </div>
+          </div>
+          <!-- Step 4 -->
+          <div class="step" id="step-epub">
+            <div class="step-indicator">4</div>
+            <div class="step-content">
+              <div class="step-title">导出 EPUB</div>
+              <div class="step-status">等待中</div>
+            </div>
+            <div class="step-action" id="epub-download-container">
+              <!-- Download link will be inserted here -->
+            </div>
+          </div>
         </div>
-        <div class="meter">
-          <div id="meter-fill"></div>
-        </div>
+
         <pre id="error-box" hidden></pre>
+        
+        <details class="details-card" style="margin-top: 16px;">
+          <summary>调试日志</summary>
+          <div class="details-body">
+            <ul id="events-list"></ul>
+          </div>
+        </details>
       </section>
+    </main>
 
-      <section class="card outputs">
-        <h2>下载结果</h2>
-        <ul id="artifacts-list"></ul>
-      </section>
+    <!-- SLIDE-OVER MODALS -->
+    <div id="modal-overlay" class="modal-overlay hidden"></div>
 
-      <section class="card working-notes">
+    <!-- Notes Modal -->
+    <div id="modal-notes" class="modal-panel slide-out">
+      <div class="modal-header">
         <h2>Working Notes</h2>
-        <div class="working-notes-explainer">
-          <p><strong>这是什么：</strong>把 transcript 先压缩成一份中间笔记，方便你快速看懂这期内容的大意和结构。</p>
-          <p><strong>有什么用：</strong>先判断这份内容值不值得继续往下做成 booklet，而不是直接跳到最终 ebook。</p>
-          <p><strong>不是什么：</strong>它不是最终成品，也不是已经润色好的章节，只是给下一步 outline 用的工作底稿。</p>
-        </div>
-        <div id="working-notes-empty" class="empty-state">还没有生成 Working Notes。</div>
+        <button class="close-modal icon-btn" data-target="modal-notes">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="working-notes-empty" class="empty-state">暂无内容</div>
         <div id="working-notes-panel" hidden>
           <div class="working-notes-summary-block">
             <h3>整体摘要</h3>
@@ -85,73 +130,68 @@
             <div id="working-notes-sections"></div>
           </div>
         </div>
-      </section>
+      </div>
+    </div>
 
-      <section class="card booklet-outline">
+    <!-- Outline Modal -->
+    <div id="modal-outline" class="modal-panel slide-out">
+      <div class="modal-header">
         <h2>Booklet Outline</h2>
-        <div class="outline-explainer">
-          <p><strong>这是什么：</strong>把 Working Notes 再整理成一个更接近 booklet 的章节顺序。</p>
-          <p><strong>有什么用：</strong>先看这期内容适不适合被拆成这样的章节结构，再决定是否进入正文 drafting。</p>
-          <p><strong>你现在要看什么：</strong>标题是否自然、顺序是否合理、每章 goal 是否真的有帮助。</p>
-        </div>
-        <div id="booklet-outline-empty" class="empty-state">还没有生成 Booklet Outline。</div>
+        <button class="close-modal icon-btn" data-target="modal-outline">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="booklet-outline-empty" class="empty-state">暂无内容</div>
         <div id="booklet-outline-panel" hidden>
           <h3 id="booklet-outline-title"></h3>
           <ol id="booklet-outline-sections"></ol>
         </div>
-      </section>
+      </div>
+    </div>
 
-      <section class="card booklet-draft">
+    <!-- Draft Modal -->
+    <div id="modal-draft" class="modal-panel slide-out">
+      <div class="modal-header">
         <h2>Booklet Draft</h2>
-        <div class="draft-explainer">
-          <p><strong>这是什么：</strong>把 Outline 真正写成一版可阅读的正文草稿。</p>
-          <p><strong>有什么用：</strong>先看结构和行文是否顺，再决定要不要继续细修或直接导出 EPUB。</p>
-          <p><strong>你现在要看什么：</strong>标题是否自然、每章有没有真的写开、章节之间是否衔接。</p>
-        </div>
-        <div id="booklet-draft-empty" class="empty-state">还没有生成 Booklet Draft。</div>
+        <button class="close-modal icon-btn" data-target="modal-draft">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="booklet-draft-empty" class="empty-state">暂无内容</div>
         <div id="booklet-draft-panel" hidden>
           <h3 id="booklet-draft-title"></h3>
           <div id="booklet-draft-sections"></div>
         </div>
-      </section>
+      </div>
+    </div>
 
-      <section class="card events">
-        <details class="details-card">
-          <summary>调试信息（阶段追踪）</summary>
-          <div class="details-body">
-            <ul id="events-list"></ul>
-          </div>
-        </details>
-      </section>
+    <!-- Settings Modal -->
+    <div id="modal-settings" class="modal-panel slide-out">
+      <div class="modal-header">
+        <h2>模型设置</h2>
+        <button class="close-modal icon-btn" data-target="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid">
+          <label>
+            LLM Base URL
+            <input id="llm-base-url" type="url" placeholder="https://openrouter.ai/api/v1" />
+          </label>
+          <label>
+            模型名称
+            <input id="llm-model" type="text" placeholder="google/gemini-3-flash-preview" />
+          </label>
+          <label>
+            API Key
+            <input id="llm-api-key" type="password" placeholder="填入你自己的 key" />
+          </label>
+        </div>
+        <div class="actions" style="margin-top: 16px;">
+          <button id="save-settings" type="button">保存设置</button>
+        </div>
+        <p class="feedback">API key 只保存在当前 Chrome 配置文件的本地存储里，不会再走 `localhost` 后端。</p>
+        <p id="settings-feedback" class="feedback" aria-live="polite"></p>
+      </div>
+    </div>
 
-      <section class="card settings">
-        <details class="details-card">
-          <summary>模型设置</summary>
-          <div class="details-body">
-            <div class="grid">
-              <label>
-                LLM Base URL
-                <input id="llm-base-url" type="url" placeholder="https://openrouter.ai/api/v1" />
-              </label>
-              <label>
-                模型名称
-                <input id="llm-model" type="text" placeholder="google/gemini-3-flash-preview" />
-              </label>
-              <label>
-                API Key
-                <input id="llm-api-key" type="password" placeholder="填入你自己的 key" />
-              </label>
-            </div>
-            <div class="actions">
-              <button id="save-settings" type="button">保存设置</button>
-              <button id="load-sample" type="button" class="ghost">填充示例文本</button>
-            </div>
-            <p class="feedback">API key 只保存在当前 Chrome 配置文件的本地存储里，不会再走 `localhost` 后端。</p>
-            <p id="settings-feedback" class="feedback" aria-live="polite"></p>
-          </div>
-        </details>
-      </section>
-    </main>
     <script src="./sidepanel.js" type="module"></script>
   </body>
 </html>
