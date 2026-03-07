@@ -7,6 +7,25 @@ export type AuthUser = {
   email: string;
 };
 
+export type InspectorStageName =
+  | "transcript"
+  | "llm_request"
+  | "llm_response"
+  | "normalization"
+  | "pdf"
+  | "epub";
+
+export type InspectorStageRecord = {
+  stage: InspectorStageName;
+  ts: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  notes?: string;
+};
+
+export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;
+
 export type CreateJobInput = {
   userId: string;
   title?: string;
