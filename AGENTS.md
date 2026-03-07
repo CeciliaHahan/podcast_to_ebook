@@ -43,48 +43,21 @@ Use this tree to route work quickly.
 
 ```text
 .
-├── AGENTS.md                     # This guide
+├── CLAUDE.md                     # This guide
 ├── README.md                     # Project overview + quick start
-├── run_e2e_debug.sh              # One-command Postgres + backend + observability dashboard startup
-├── data/
-│   └── transcripts/              # Large transcript samples for realistic E2E debug runs
-├── tasks/
-│   ├── method-compare/           # Method comparison outputs and reports
-│   └── transcript-samples/       # Local transcript fixtures for fast E2E iteration
-├── backend/
-│   ├── src/
-│   │   ├── app.ts                # Express app wiring
-│   │   ├── index.ts              # Server entrypoint
-│   │   ├── config.ts             # Env/config loading
-│   │   ├── routes/               # API endpoints (v1, health, downloads)
-│   │   ├── services/             # Job orchestration + booklet generation
-│   │   ├── repositories/         # DB access layer
-│   │   ├── domain/               # Core state machine/domain logic
-│   │   ├── db/                   # DB pool setup
-│   │   ├── middleware/           # Auth and request middleware
-│   │   ├── lib/                  # Shared helpers/errors/ids
-│   │   └── types/                # Type definitions
-│   ├── migrations/               # SQL migrations
-│   ├── package.json              # Backend scripts/deps
-│   └── tsconfig.json             # TypeScript config
 ├── extension/
 │   ├── manifest.json             # Chrome extension manifest
 │   ├── sidepanel/                # Main user workflow UI
-│   ├── popup/                    # Popup UI
-│   └── src/api/                  # Extension API client + types
+│   └── popup/                    # Popup UI (opens sidepanel)
 ├── docs/
-│   ├── v1-spec.md                # Product and API behavior spec
-│   ├── openapi.v1.yaml           # OpenAPI contract
-│   ├── db-schema.v1.sql          # DB schema reference
-│   └── *.md                      # Pipeline, template, and decision docs
+│   └── *.md                      # Pipeline, spec, and decision docs
 ├── scripts/
-│   ├── dev-up.sh                 # Start local dev stack
-│   ├── dev-down.sh               # Stop local dev stack
-│   ├── dev-smoke.sh              # Smoke test flow
-│   └── run-server.sh             # One-command backend run
+│   └── committer                 # Git commit helper
+├── tasks/
+│   └── transcript-samples/       # Local transcript fixtures
 └── assets/
-    ├── fonts/                    # Rendering fonts
-    └── templates/                # EPUB/template assets
+    ├── fonts/                    # CJK fonts for EPUB rendering
+    └── templates/                # EPUB template assets
 ```
 
 ## Output Style Requirements

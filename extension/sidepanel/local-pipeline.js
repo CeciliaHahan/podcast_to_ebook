@@ -213,32 +213,6 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
   };
 }
 
-  ]
-}`,
-    `上下文：title=${params.title}; language=${params.language}`,
-    "transcript:",
-    params.transcriptText,
-  ].join("\n");
-}
-
-  ]
-}`,
-    `上下文：title=${params.title}; language=${params.language}`,
-    "working notes:",
-    JSON.stringify(params.workingNotes, null, 2),
-  ].join("\n");
-}
-
-  ]
-}`,
-    `上下文：title=${params.title}; language=${params.language}`,
-    "working notes:",
-    JSON.stringify(params.workingNotes, null, 2),
-    "booklet outline:",
-    JSON.stringify(params.bookletOutline, null, 2),
-  ].join("\n");
-}
-
 function normalizeBaseUrl(input) {
   const baseUrl = String(input || DEFAULT_LLM_SETTINGS.llmBaseUrl).trim().replace(/\/$/, "");
   let parsed;
