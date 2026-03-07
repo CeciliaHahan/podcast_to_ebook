@@ -2669,10 +2669,27 @@ function rangeFromSimpleQuotes(quotes: BookletQuote[], fallbackRange: string): s
   return `${timestamps[0]} - ${timestamps[timestamps.length - 1]}`;
 }
 
+function buildSimpleFallbackActions(points: string[], profile: TranscriptSourceProfile): string[] {
+  const first = shorten(points[0] ?? "本章最重要的判断", 28);
+  const second = shorten(points[1] ?? points[0] ?? "还需要验证的细节", 28);
+  if (profile === "discussion") {
+    return [
+      `下次讨论到“${first}”时，先说事实，再说感受，最后再提请求。`,
+      `围绕“${second}”，补一个更具体的生活场景例子。`,
+    ];
+  }
+  return [
+    `围绕“${first}”，写下一个这周就能尝试的具体做法。`,
+    `针对“${second}”，补一条原文证据和一个现实场景。`,
+  ];
+}
+
 function toSimpleBookletChapter(params: {
   rawChapter: SimpleBookletDraft["chapters"][number];
   chapterIndex: number;
   fallbackRange: string;
+  sourceProfile: TranscriptSourceProfile;
+  segmentEntries: TranscriptEntry[];
 }): BookletChapter {
   const title = cleanLine(params.rawChapter.title);
   if (!title) {
@@ -2681,7 +2698,7 @@ function toSimpleBookletChapter(params: {
 
   const points = uniqueNonEmpty(params.rawChapter.summary.map((item) => normalizeSummarySentence(item))).slice(0, 5);
   const insights = uniqueNonEmpty(params.rawChapter.insights.map((item) => normalizeSummarySentence(item))).slice(0, 4);
-  const quotes = params.rawChapter.quotes
+  const llmQuotes = params.rawChapter.quotes
     .map((quote) => ({
       speaker: cleanLine(quote.speaker) || FALLBACK_SPEAKER,
       timestamp: cleanLine(quote.timestamp) || FALLBACK_TIMESTAMP,
@@ -2689,7 +2706,26 @@ function toSimpleBookletChapter(params: {
     }))
     .filter((quote) => quote.text)
     .slice(0, 4);
-  const actions = uniqueNonEmpty(params.rawChapter.actions.map((item) => normalizeSummarySentence(item))).slice(0, 4);
+  const derivedQuotes = params.segmentEntries.length ? chapterQuotesFromChunk(points, params.segmentEntries) : [];
+  const quotes = uniqueNonEmpty(
+    [...llmQuotes.map((quote) => `${quote.speaker}|||${quote.timestamp}|||${quote.text}`), ...derivedQuotes.map((quote) => `${quote.speaker}|||${quote.timestamp}|||${quote.text}`)],
+  )
+    .map((entry) => {
+      const [speaker, timestamp, text] = entry.split("|||");
+      return {
+        speaker: speaker ?? FALLBACK_SPEAKER,
+        timestamp: timestamp ?? FALLBACK_TIMESTAMP,
+        text: text ?? "",
+      };
+    })
+    .filter((quote) => quote.text)
+    .slice(0, 4);
+  const actions = uniqueNonEmpty(
+    [
+      ...params.rawChapter.actions.map((item) => normalizeSummarySentence(item)),
+      ...buildSimpleFallbackActions(points, params.sourceProfile),
+    ].filter(Boolean),
+  ).slice(0, 4);
   const range = rangeFromSimpleQuotes(quotes, params.fallbackRange);
 
   return {
@@ -2756,7 +2792,7 @@ async function buildSimpleBookletModel(params: {
 
   const totalTarget = targetChapterCount(entries.length || segments.length * 24);
   const chapterTargetPerSegment = Math.max(2, Math.min(6, Math.floor(totalTarget / segments.length) || 2));
-  const drafts: Array<{ segment: SimpleLengthSegment; draft: SimpleBookletDraft }> = [];
+  const drafts: Array<{ segment: SimpleLengthSegment; draft: SimpleBookletDraft; segmentEntries: TranscriptEntry[] }> = [];
 
   for (const segment of segments) {
     const draft = await generateSimpleBookletDraftWithLlm({
@@ -2825,7 +2861,11 @@ async function buildSimpleBookletModel(params: {
       throw new Error(`simple-v1 LLM draft failed for ${segment.label}`);
     }
 
-    drafts.push({ segment, draft });
+    drafts.push({
+      segment,
+      draft,
+      segmentEntries: parseTranscriptEntries(segment.transcriptText),
+    });
   }
 
   const chapters: BookletChapter[] = [];
@@ -2837,6 +2877,8 @@ async function buildSimpleBookletModel(params: {
           rawChapter,
           chapterIndex,
           fallbackRange: item.segment.range,
+          sourceProfile: sourceProfile.sourceProfile,
+          segmentEntries: item.segmentEntries,
         }),
       );
       chapterIndex += 1;
@@ -4244,6 +4286,7 @@ async function createArtifactsWithMode(params: {
   inspector?: (stage: InspectorPushInput) => void;
   persistToDatabase: boolean;
 }): Promise<ArtifactRecord[]> {
+  const pipelineVariant = params.pipelineVariant ?? "simple-v1";
   const commonParams = {
     jobId: params.jobId,
     title: params.title,
@@ -4255,7 +4298,7 @@ async function createArtifactsWithMode(params: {
     inspector: params.inspector,
   };
   const booklet =
-    params.pipelineVariant === "simple-v1"
+    pipelineVariant === "simple-v1"
       ? await buildSimpleBookletModel(commonParams)
       : await buildBookletModel({
           ...commonParams,

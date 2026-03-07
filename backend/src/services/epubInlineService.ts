@@ -34,7 +34,7 @@ function readGenerationMethod(_value: unknown): GenerationMethod {
 }
 
 function readPipelineVariant(value: unknown): PipelineVariant {
-  return value === "simple-v1" ? "simple-v1" : "current";
+  return value === "current" ? "current" : "simple-v1";
 }
 
 export async function createEpubFromTranscriptInline(params: {
