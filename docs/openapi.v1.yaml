@@ -1,50 +1,104 @@
 openapi: 3.1.0
 info:
   title: Podcasts_to_ebooks API
-  version: 1.0.0
-  description: Current transcript-to-EPUB API contract (single inline generation path).
+  version: 1.1.0
+  description: Staged transcript-to-EPUB API contract (4-step pipeline for dev tooling).
 servers:
-  - url: https://api.example.com
-    description: Production
-  - url: https://staging-api.example.com
-    description: Staging
+  - url: http://localhost:8080
+    description: Local dev
 security:
   - bearerAuth: []
 tags:
-  - name: Generation
+  - name: Staged Pipeline
 paths:
-  /v1/epub/from-transcript:
+  /v1/working-notes/from-transcript:
     post:
-      tags: [Generation]
-      summary: Generate EPUB from transcript text (inline)
-      operationId: createEpubFromTranscript
+      tags: [Staged Pipeline]
+      summary: Generate working notes from transcript text
+      operationId: createWorkingNotesFromTranscript
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateEpubFromTranscriptRequest"
+              $ref: "#/components/schemas/TranscriptRequest"
       responses:
         "200":
-          description: EPUB generated inline with artifacts and inspector stages
+          description: Working notes generated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateEpubFromTranscriptResponse"
+                $ref: "#/components/schemas/StagedResponse"
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "401":
           $ref: "#/components/responses/ErrorResponse"
-        "403":
+  /v1/booklet-outline/from-working-notes:
+    post:
+      tags: [Staged Pipeline]
+      summary: Generate booklet outline from working notes
+      operationId: createBookletOutlineFromWorkingNotes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutlineRequest"
+      responses:
+        "200":
+          description: Booklet outline generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StagedResponse"
+        "400":
           $ref: "#/components/responses/ErrorResponse"
-        "429":
+  /v1/booklet-draft/from-booklet-outline:
+    post:
+      tags: [Staged Pipeline]
+      summary: Generate booklet draft from outline
+      operationId: createBookletDraftFromOutline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftRequest"
+      responses:
+        "200":
+          description: Booklet draft generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StagedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /v1/epub/from-booklet-draft:
+    post:
+      tags: [Staged Pipeline]
+      summary: Build EPUB from booklet draft (deterministic, no LLM)
+      operationId: createEpubFromBookletDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EpubFromDraftRequest"
+      responses:
+        "200":
+          description: EPUB built with download URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StagedResponse"
+        "400":
           $ref: "#/components/responses/ErrorResponse"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      description: "Bearer dev-token or Bearer dev:<email>"
   responses:
     ErrorResponse:
       description: Standard API error
@@ -53,118 +107,91 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
-    OutputFormat:
-      type: string
-      enum: [epub, pdf, md]
-    CommonMetadata:
+    TranscriptRequest:
       type: object
-      additionalProperties: true
-      properties:
-        podcast_name:
-          type: string
-        speaker:
-          type: string
-        episode_url:
-          type: string
-          format: uri
-        generation_method:
-          type: string
-          enum: [A, B, C]
-    CreateEpubFromTranscriptRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - title
-        - language
-        - transcript_text
+      required: [title, language, transcript_text]
       properties:
         title:
           type: string
-          minLength: 1
-          maxLength: 300
         language:
           type: string
           example: zh-CN
         transcript_text:
           type: string
-          minLength: 10
-          maxLength: 120000
-        template_id:
-          type: string
-          default: templateA-v0-book
+          maxLength: 80000
         metadata:
-          $ref: "#/components/schemas/CommonMetadata"
-    JobArtifactItem:
+          type: object
+    OutlineRequest:
       type: object
-      required: [type, file_name, size_bytes, download_url, expires_at]
+      required: [title, language, working_notes]
       properties:
-        type:
-          $ref: "#/components/schemas/OutputFormat"
-        file_name:
+        title:
           type: string
-        size_bytes:
-          type: integer
-          minimum: 0
-        download_url:
+        language:
           type: string
-          format: uri
-        expires_at:
-          type: string
-          format: date-time
-    InspectorStageRecord:
+        working_notes:
+          type: object
+        metadata:
+          type: object
+    DraftRequest:
       type: object
-      required: [stage, ts]
+      required: [title, language, working_notes, booklet_outline]
       properties:
-        stage:
+        title:
           type: string
-          example: normalization
-        ts:
+        language:
           type: string
-          format: date-time
-        input:
+        working_notes:
           type: object
-          additionalProperties: true
-        output:
+        booklet_outline:
           type: object
-          additionalProperties: true
-        config:
+        metadata:
           type: object
-          additionalProperties: true
-        notes:
-          type: string
-    CreateEpubFromTranscriptResponse:
+    EpubFromDraftRequest:
       type: object
-      required: [job_id, status, created_at, artifacts, stages, traceability]
+      required: [title, language, booklet_draft]
+      properties:
+        title:
+          type: string
+        language:
+          type: string
+        booklet_draft:
+          type: object
+        metadata:
+          type: object
+    StagedResponse:
+      type: object
+      required: [job_id, status, created_at, stages, traceability]
       properties:
         job_id:
           type: string
-          example: run_abc123
         status:
           type: string
           enum: [succeeded]
         created_at:
           type: string
           format: date-time
-        artifacts:
-          type: array
-          items:
-            $ref: "#/components/schemas/JobArtifactItem"
         stages:
           type: array
           items:
             $ref: "#/components/schemas/InspectorStageRecord"
         traceability:
           type: object
-          required: [source_type, source_ref, generated_at]
-          properties:
-            source_type:
-              type: string
-              enum: [transcript]
-            source_ref:
-              type: string
-            generated_at:
-              type: string
-              format: date-time
+    InspectorStageRecord:
+      type: object
+      required: [stage, ts]
+      properties:
+        stage:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        input:
+          type: object
+        output:
+          type: object
+        config:
+          type: object
     ErrorEnvelope:
       type: object
       required: [error]

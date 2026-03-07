@@ -4,7 +4,6 @@ import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
 import { config } from "../config.js";
 import { createEpubFromBookletDraft } from "../services/draftEpubService.js";
-import { createEpubFromTranscriptInline } from "../services/epubInlineService.js";
 import {
   createBookletDraftFromOutline,
   createBookletOutlineFromWorkingNotes,
@@ -12,16 +11,6 @@ import {
 } from "../services/workingNotesService.js";
 
 const router = Router();
-
-const MAX_TRANSCRIPT_CHARS = 120_000;
-
-const epubTranscriptRequestSchema = z.object({
-  title: z.string().min(1).max(300),
-  language: z.string().min(1),
-  transcript_text: z.string().min(10).max(MAX_TRANSCRIPT_CHARS),
-  template_id: z.string().default("templateA-v0-book"),
-  metadata: z.record(z.unknown()).optional(),
-});
 
 const workingNotesTranscriptRequestSchema = z.object({
   title: z.string().trim().min(1).max(300),
@@ -100,19 +89,6 @@ function getUser(req: Request): { id: string; email: string } {
   return user;
 }
 
-const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
-  getUser(req);
-  const parsed = epubTranscriptRequestSchema.parse(req.body);
-  const response = await createEpubFromTranscriptInline({
-    title: parsed.title,
-    language: parsed.language,
-    transcriptText: parsed.transcript_text,
-    templateId: parsed.template_id,
-    metadata: parsed.metadata,
-  });
-  res.status(200).json(response);
-});
-
 const createWorkingNotesFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
   getUser(req);
   const parsed = workingNotesTranscriptRequestSchema.parse(req.body);
@@ -162,7 +138,6 @@ const createEpubFromBookletDraftRoute = asyncHandler(async (req: Request, res) =
   res.status(200).json(response);
 });
 
-router.post("/epub/from-transcript", createEpubFromTranscriptRoute);
 router.post("/working-notes/from-transcript", createWorkingNotesFromTranscriptRoute);
 router.post("/booklet-outline/from-working-notes", createBookletOutlineRoute);
 router.post("/booklet-draft/from-booklet-outline", createBookletDraftRoute);

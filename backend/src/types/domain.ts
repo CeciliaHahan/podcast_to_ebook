@@ -1,5 +1,3 @@
-export type SourceType = "transcript" | "audio" | "rss" | "link";
-export type JobStatus = "queued" | "processing" | "succeeded" | "failed" | "canceled";
 export type OutputFormat = "epub" | "pdf" | "md";
 
 export type AuthUser = {
@@ -7,25 +5,21 @@ export type AuthUser = {
   email: string;
 };
 
-export type CreateJobInput = {
-  userId: string;
-  title?: string;
-  language?: string;
-  templateId: string;
-  outputFormats: OutputFormat[];
-  sourceRef?: string;
-  inputCharCount?: number;
-  compliance: {
-    forPersonalOrAuthorizedUseOnly: boolean;
-    noCommercialUse: boolean;
-  };
-  rawInput: {
-    transcriptStorageUri?: string;
-    audioStorageUri?: string;
-    rssUrl?: string;
-    rssEpisodeId?: string;
-    episodeUrl?: string;
-    metadata?: Record<string, unknown>;
-  };
-  acceptanceCopy: string;
+export type InspectorStageName =
+  | "transcript"
+  | "llm_request"
+  | "llm_response"
+  | "normalization"
+  | "pdf"
+  | "epub";
+
+export type InspectorStageRecord = {
+  stage: InspectorStageName;
+  ts: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  notes?: string;
 };
+
+export type InspectorPushInput = Omit<InspectorStageRecord, "ts">;

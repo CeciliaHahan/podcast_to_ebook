@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { ApiError } from "../lib/errors.js";
 import { createId } from "../lib/ids.js";
-import type { InspectorPushInput, InspectorStageRecord } from "../repositories/jobsRepo.js";
+import type { InspectorPushInput, InspectorStageRecord } from "../types/domain.js";
 
 export type WorkingNotes = {
   title: string;
