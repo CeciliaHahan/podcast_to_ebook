@@ -3,3 +3,4 @@ dist
 .env
 .DS_Store
 backend/.dev-artifacts/
+extension/sidepanel/config.local.js

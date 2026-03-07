@@ -7,10 +7,20 @@ import {
   buildDraftPrompt,
 } from "./prompts.js";
 
+// Try to load a gitignored config file with a pre-set API key.
+// If config.local.js doesn't exist, fall back to empty (user enters key manually).
+let _localApiKey = "";
+try {
+  const localConfig = await import("./config.local.js");
+  _localApiKey = localConfig.LOCAL_API_KEY || "";
+} catch {
+  // config.local.js not present — that's fine, user sets key in settings.
+}
+
 export const DEFAULT_LLM_SETTINGS = {
   llmBaseUrl: "https://openrouter.ai/api/v1",
   llmModel: "google/gemini-3-flash-preview",
-  llmApiKey: "",
+  llmApiKey: _localApiKey,
 };
 
 export const LLM_INPUT_MAX_CHARS = 80_000;

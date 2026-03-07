@@ -574,7 +574,7 @@ async function getSettings() {
 async function loadSettings() {
   const settings = await getSettings();
   elements.llmBaseUrl.value = settings.llmBaseUrl || DEFAULT_LLM_SETTINGS.llmBaseUrl;
-  elements.llmApiKey.value = settings.llmApiKey || "";
+  elements.llmApiKey.value = settings.llmApiKey || DEFAULT_LLM_SETTINGS.llmApiKey || "";
   elements.llmModel.value = settings.llmModel || DEFAULT_LLM_SETTINGS.llmModel;
 }
 
