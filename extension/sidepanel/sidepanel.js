@@ -17,6 +17,7 @@ const elements = {
   transcriptText: document.getElementById("transcript-text"),
   checkPersonal: document.getElementById("check-personal"),
   checkNonCommercial: document.getElementById("check-noncommercial"),
+  generateWorkingNotes: document.getElementById("generate-working-notes"),
   submitJob: document.getElementById("submit-job"),
   jobId: document.getElementById("job-id"),
   jobStatus: document.getElementById("job-status"),
@@ -25,6 +26,10 @@ const elements = {
   meterFill: document.getElementById("meter-fill"),
   errorBox: document.getElementById("error-box"),
   artifactsList: document.getElementById("artifacts-list"),
+  workingNotesEmpty: document.getElementById("working-notes-empty"),
+  workingNotesPanel: document.getElementById("working-notes-panel"),
+  workingNotesSummary: document.getElementById("working-notes-summary"),
+  workingNotesSections: document.getElementById("working-notes-sections"),
   eventsList: document.getElementById("events-list"),
 };
 
@@ -48,6 +53,7 @@ const STAGE_LABELS = {
   pdf: "PDF 渲染",
   epub: "EPUB 渲染",
   finalize: "收尾",
+  completed: "完成",
 };
 
 function sanitizeGeneratedTitle(rawTitle) {
@@ -186,6 +192,54 @@ function renderArtifacts(data) {
     </a>`;
     elements.artifactsList.appendChild(li);
   }
+}
+
+function renderWorkingNotes(data) {
+  const notes = data?.working_notes;
+  elements.workingNotesSummary.innerHTML = "";
+  elements.workingNotesSections.innerHTML = "";
+  if (!notes?.summary?.length || !notes?.sections?.length) {
+    elements.workingNotesEmpty.hidden = false;
+    elements.workingNotesPanel.hidden = true;
+    return;
+  }
+
+  for (const item of notes.summary) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    elements.workingNotesSummary.appendChild(li);
+  }
+
+  for (const section of notes.sections) {
+    const article = document.createElement("article");
+    article.className = "working-note-section";
+
+    const title = document.createElement("h4");
+    title.textContent = section.heading;
+    article.appendChild(title);
+
+    const bullets = document.createElement("ul");
+    for (const bullet of section.bullets || []) {
+      const li = document.createElement("li");
+      li.textContent = bullet;
+      bullets.appendChild(li);
+    }
+    article.appendChild(bullets);
+
+    const excerpts = document.createElement("div");
+    excerpts.className = "working-note-excerpts";
+    for (const excerpt of section.excerpts || []) {
+      const block = document.createElement("blockquote");
+      block.className = "working-note-excerpt";
+      block.textContent = excerpt;
+      excerpts.appendChild(block);
+    }
+    article.appendChild(excerpts);
+    elements.workingNotesSections.appendChild(article);
+  }
+
+  elements.workingNotesEmpty.hidden = true;
+  elements.workingNotesPanel.hidden = false;
 }
 
 function renderInspector(data) {
@@ -417,6 +471,53 @@ async function handleCreateJob(event) {
   }
 }
 
+async function handleGenerateWorkingNotes() {
+  clearError();
+  elements.generateWorkingNotes.disabled = true;
+  elements.generateWorkingNotes.textContent = "生成中...";
+  try {
+    await saveSettings();
+    if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
+      throw new Error("请先确认使用声明。");
+    }
+
+    const resolvedTitle = elements.title.value.trim() || autoGenerateTitle(elements.transcriptText.value);
+    elements.title.value = resolvedTitle;
+
+    const payload = {
+      title: resolvedTitle,
+      language: elements.language.value.trim(),
+      transcript_text: elements.transcriptText.value,
+      metadata: {
+        episode_url: elements.episodeUrl.value.trim() || undefined,
+      },
+      compliance_declaration: {
+        for_personal_or_authorized_use_only: true,
+        no_commercial_use: true,
+      },
+    };
+
+    const created = await apiRequest("/v1/working-notes/from-transcript", "POST", payload);
+    renderStatus({
+      job_id: created.job_id,
+      status: created.status,
+      progress: 100,
+      stage: "completed",
+    });
+    renderWorkingNotes(created);
+    if (Array.isArray(created.stages) && created.stages.length > 0) {
+      renderInspector({ stages: created.stages });
+    } else {
+      elements.eventsList.innerHTML = "<li>未返回调试阶段信息。</li>";
+    }
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : "Working Notes 生成失败");
+  } finally {
+    elements.generateWorkingNotes.disabled = false;
+    elements.generateWorkingNotes.textContent = "先看 Working Notes";
+  }
+}
+
 function loadSample() {
   elements.title.value = "示例播客：从信息输入到可执行输出";
   elements.language.value = "zh-CN";
@@ -441,6 +542,7 @@ async function init() {
     }
   });
   elements.loadSample.addEventListener("click", loadSample);
+  elements.generateWorkingNotes.addEventListener("click", handleGenerateWorkingNotes);
   await loadSettings();
 }
 

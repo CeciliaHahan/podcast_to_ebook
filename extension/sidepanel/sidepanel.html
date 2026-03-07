@@ -40,7 +40,10 @@
             <label><input id="check-personal" type="checkbox" checked /> 仅用于个人学习或已获授权场景</label>
             <label><input id="check-noncommercial" type="checkbox" checked /> 不用于商业用途</label>
           </div>
-          <button id="submit-job" type="submit">开始生成 EPUB</button>
+          <div class="primary-actions">
+            <button id="generate-working-notes" type="button" class="ghost">先看 Working Notes</button>
+            <button id="submit-job" type="submit">开始生成 EPUB</button>
+          </div>
         </form>
       </section>
 
@@ -64,6 +67,22 @@
       <section class="card outputs">
         <h2>下载结果</h2>
         <ul id="artifacts-list"></ul>
+      </section>
+
+      <section class="card working-notes">
+        <h2>Working Notes</h2>
+        <p class="micro-hint">这是 transcript 的 one-pass 压缩结果，用于下一步 outline，不是最终 ebook。</p>
+        <div id="working-notes-empty" class="empty-state">还没有生成 Working Notes。</div>
+        <div id="working-notes-panel" hidden>
+          <div class="working-notes-summary-block">
+            <h3>整体摘要</h3>
+            <ul id="working-notes-summary"></ul>
+          </div>
+          <div class="working-notes-sections-block">
+            <h3>候选章节</h3>
+            <div id="working-notes-sections"></div>
+          </div>
+        </div>
       </section>
 
       <section class="card events">
