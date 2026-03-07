@@ -5,6 +5,7 @@ import {
   createBookletOutlineFromWorkingNotes,
   createWorkingNotesFromTranscript,
 } from "./local-pipeline.js";
+import { DEFAULT_PROMPTS } from "./prompts.js";
 import { createEpubFromBookletDraft } from "./local-epub.js";
 
 const SETTINGS_KEY = "pte_settings_v2";
@@ -79,6 +80,20 @@ const elements = {
   openHistoryBtn: document.getElementById("open-history"),
   historyEmpty: document.getElementById("history-empty"),
   historyList: document.getElementById("history-list"),
+  
+  // Prompt Editor Elements
+  openPromptsBtn: document.getElementById("open-prompts"),
+  savePrompts: document.getElementById("save-prompts"),
+  resetPrompts: document.getElementById("reset-prompts"),
+  promptsFeedback: document.getElementById("prompts-feedback"),
+  prompts: {
+    wnSystem: document.getElementById("prompt-wn-system"),
+    wnUser: document.getElementById("prompt-wn-user"),
+    outlineSystem: document.getElementById("prompt-outline-system"),
+    outlineUser: document.getElementById("prompt-outline-user"),
+    draftSystem: document.getElementById("prompt-draft-system"),
+    draftUser: document.getElementById("prompt-draft-user"),
+  },
 
   // Modal Triggers
   modalOverlay: document.getElementById("modal-overlay"),
@@ -745,7 +760,11 @@ function getStorageArea() {
 
 async function getSettings() {
   const stored = await getStorageArea().get([SETTINGS_KEY]);
-  return stored[SETTINGS_KEY] || { ...DEFAULT_LLM_SETTINGS };
+  const settings = stored[SETTINGS_KEY] || { ...DEFAULT_LLM_SETTINGS };
+  if (!settings.prompts) {
+    settings.prompts = { ...DEFAULT_PROMPTS };
+  }
+  return settings;
 }
 
 async function loadSettings() {
@@ -753,6 +772,13 @@ async function loadSettings() {
   elements.llmBaseUrl.value = settings.llmBaseUrl || DEFAULT_LLM_SETTINGS.llmBaseUrl;
   elements.llmApiKey.value = settings.llmApiKey || DEFAULT_LLM_SETTINGS.llmApiKey || "";
   elements.llmModel.value = settings.llmModel || DEFAULT_LLM_SETTINGS.llmModel;
+  
+  elements.prompts.wnSystem.value = settings.prompts.wnSystem;
+  elements.prompts.wnUser.value = settings.prompts.wnUser;
+  elements.prompts.outlineSystem.value = settings.prompts.outlineSystem;
+  elements.prompts.outlineUser.value = settings.prompts.outlineUser;
+  elements.prompts.draftSystem.value = settings.prompts.draftSystem;
+  elements.prompts.draftUser.value = settings.prompts.draftUser;
 }
 
 async function saveSettings() {
@@ -760,6 +786,14 @@ async function saveSettings() {
     llmBaseUrl: String(elements.llmBaseUrl.value || DEFAULT_LLM_SETTINGS.llmBaseUrl).trim().replace(/\/$/, ""),
     llmApiKey: String(elements.llmApiKey.value || "").trim(),
     llmModel: String(elements.llmModel.value || DEFAULT_LLM_SETTINGS.llmModel).trim() || DEFAULT_LLM_SETTINGS.llmModel,
+    prompts: {
+      wnSystem: elements.prompts.wnSystem.value,
+      wnUser: elements.prompts.wnUser.value,
+      outlineSystem: elements.prompts.outlineSystem.value,
+      outlineUser: elements.prompts.outlineUser.value,
+      draftSystem: elements.prompts.draftSystem.value,
+      draftUser: elements.prompts.draftUser.value,
+    }
   };
   await getStorageArea().set({ [SETTINGS_KEY]: settings });
   return settings;
@@ -865,6 +899,38 @@ async function init() {
       elements.saveSettings.disabled = false;
       elements.saveSettings.textContent = "保存设置";
     }
+  });
+
+  // Prompts
+  elements.openPromptsBtn.addEventListener("click", () => openModal("modal-prompts"));
+
+  elements.savePrompts.addEventListener("click", async () => {
+    try {
+      elements.savePrompts.disabled = true;
+      elements.savePrompts.textContent = "保存中...";
+      await saveSettings();
+      elements.promptsFeedback.textContent = "提示词已保存！";
+      elements.promptsFeedback.style.color = "var(--success)";
+      setTimeout(() => { elements.promptsFeedback.textContent = ""; }, 2000);
+    } catch (error) {
+      elements.promptsFeedback.textContent = "保存失败";
+      elements.promptsFeedback.style.color = "var(--error)";
+    } finally {
+      elements.savePrompts.disabled = false;
+      elements.savePrompts.textContent = "保存提示词";
+    }
+  });
+
+  elements.resetPrompts.addEventListener("click", () => {
+    if (!confirm("确定要恢复默认提示词吗？当前修改将会丢失。")) return;
+    elements.prompts.wnSystem.value = DEFAULT_PROMPTS.wnSystem;
+    elements.prompts.wnUser.value = DEFAULT_PROMPTS.wnUser;
+    elements.prompts.outlineSystem.value = DEFAULT_PROMPTS.outlineSystem;
+    elements.prompts.outlineUser.value = DEFAULT_PROMPTS.outlineUser;
+    elements.prompts.draftSystem.value = DEFAULT_PROMPTS.draftSystem;
+    elements.prompts.draftUser.value = DEFAULT_PROMPTS.draftUser;
+    elements.promptsFeedback.textContent = "已恢复默认，请点击保存。";
+    elements.promptsFeedback.style.color = "var(--muted)";
   });
   
   // Sample Data

@@ -1,11 +1,4 @@
-import {
-  WORKING_NOTES_SYSTEM_PROMPT,
-  buildWorkingNotesPrompt,
-  OUTLINE_SYSTEM_PROMPT,
-  buildOutlinePrompt,
-  DRAFT_SYSTEM_PROMPT,
-  buildDraftPrompt,
-} from "./prompts.js";
+import { DEFAULT_PROMPTS, buildPrompt } from "./prompts.js";
 
 // Try to load a gitignored config file with a pre-set API key.
 // If config.local.js doesn't exist, fall back to empty (user enters key manually).
@@ -365,15 +358,19 @@ export async function createWorkingNotesFromTranscript(params) {
     },
   });
 
-  const prompt = buildWorkingNotesPrompt({
+  const systemPrompt = params.settings.prompts?.wnSystem || DEFAULT_PROMPTS.wnSystem;
+  const userTemplate = params.settings.prompts?.wnUser || DEFAULT_PROMPTS.wnUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     transcriptText: params.transcriptText,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: WORKING_NOTES_SYSTEM_PROMPT,
+    systemPrompt,
     temperature: 0.2,
     pushStage,
   });
@@ -419,15 +416,19 @@ export async function createBookletOutlineFromWorkingNotes(params) {
     },
   });
 
-  const prompt = buildOutlinePrompt({
+  const systemPrompt = params.settings.prompts?.outlineSystem || DEFAULT_PROMPTS.outlineSystem;
+  const userTemplate = params.settings.prompts?.outlineUser || DEFAULT_PROMPTS.outlineUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     workingNotes: params.workingNotes,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: OUTLINE_SYSTEM_PROMPT,
+    systemPrompt,
     temperature: 0.2,
     pushStage,
   });
@@ -475,16 +476,20 @@ export async function createBookletDraftFromOutline(params) {
     },
   });
 
-  const prompt = buildDraftPrompt({
+  const systemPrompt = params.settings.prompts?.draftSystem || DEFAULT_PROMPTS.draftSystem;
+  const userTemplate = params.settings.prompts?.draftUser || DEFAULT_PROMPTS.draftUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     workingNotes: params.workingNotes,
     bookletOutline: params.bookletOutline,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: DRAFT_SYSTEM_PROMPT,
+    systemPrompt,
     temperature: 0.3,
     pushStage,
   });
