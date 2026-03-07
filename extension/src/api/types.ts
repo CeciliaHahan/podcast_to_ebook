@@ -1,10 +1,5 @@
 export type OutputFormat = "epub" | "pdf" | "md";
 
-export type ComplianceDeclaration = {
-  for_personal_or_authorized_use_only: true;
-  no_commercial_use: true;
-};
-
 export type CreateEpubFromTranscriptResponse = {
   job_id: string;
   status: "succeeded";
@@ -37,7 +32,6 @@ export type CreateEpubFromTranscriptRequest = {
   transcript_text: string;
   template_id?: string;
   metadata?: Record<string, unknown>;
-  compliance_declaration: ComplianceDeclaration;
 };
 
 export type ApiErrorEnvelope = {

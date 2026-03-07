@@ -15,8 +15,6 @@ const elements = {
   language: document.getElementById("language"),
   episodeUrl: document.getElementById("episode-url"),
   transcriptText: document.getElementById("transcript-text"),
-  checkPersonal: document.getElementById("check-personal"),
-  checkNonCommercial: document.getElementById("check-noncommercial"),
   generateWorkingNotes: document.getElementById("generate-working-notes"),
   generateBookletOutline: document.getElementById("generate-booklet-outline"),
   submitJob: document.getElementById("submit-job"),
@@ -467,9 +465,6 @@ async function handleCreateJob(event) {
   elements.submitJob.textContent = "提交中...";
   try {
     await saveSettings();
-    if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
-      throw new Error("请先确认使用声明。");
-    }
 
     const resolvedTitle = elements.title.value.trim() || autoGenerateTitle(elements.transcriptText.value);
     elements.title.value = resolvedTitle;
@@ -480,10 +475,6 @@ async function handleCreateJob(event) {
       transcript_text: elements.transcriptText.value,
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
-      },
-      compliance_declaration: {
-        for_personal_or_authorized_use_only: true,
-        no_commercial_use: true,
       },
     };
 
@@ -522,9 +513,6 @@ async function handleGenerateWorkingNotes() {
   elements.generateWorkingNotes.textContent = "生成中...";
   try {
     await saveSettings();
-    if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
-      throw new Error("请先确认使用声明。");
-    }
 
     const resolvedTitle = elements.title.value.trim() || autoGenerateTitle(elements.transcriptText.value);
     elements.title.value = resolvedTitle;
@@ -535,10 +523,6 @@ async function handleGenerateWorkingNotes() {
       transcript_text: elements.transcriptText.value,
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
-      },
-      compliance_declaration: {
-        for_personal_or_authorized_use_only: true,
-        no_commercial_use: true,
       },
     };
 
@@ -570,9 +554,6 @@ async function handleGenerateBookletOutline() {
   elements.generateBookletOutline.textContent = "生成中...";
   try {
     await saveSettings();
-    if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
-      throw new Error("请先确认使用声明。");
-    }
     if (!latestWorkingNotes?.sections?.length) {
       throw new Error("请先生成 Working Notes。");
     }
@@ -586,10 +567,6 @@ async function handleGenerateBookletOutline() {
       working_notes: latestWorkingNotes,
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
-      },
-      compliance_declaration: {
-        for_personal_or_authorized_use_only: true,
-        no_commercial_use: true,
       },
     };
 

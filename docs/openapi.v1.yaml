@@ -56,19 +56,6 @@ components:
     OutputFormat:
       type: string
       enum: [epub, pdf, md]
-    ComplianceDeclaration:
-      type: object
-      additionalProperties: false
-      required:
-        - for_personal_or_authorized_use_only
-        - no_commercial_use
-      properties:
-        for_personal_or_authorized_use_only:
-          type: boolean
-          const: true
-        no_commercial_use:
-          type: boolean
-          const: true
     CommonMetadata:
       type: object
       additionalProperties: true
@@ -90,7 +77,6 @@ components:
         - title
         - language
         - transcript_text
-        - compliance_declaration
       properties:
         title:
           type: string
@@ -108,8 +94,6 @@ components:
           default: templateA-v0-book
         metadata:
           $ref: "#/components/schemas/CommonMetadata"
-        compliance_declaration:
-          $ref: "#/components/schemas/ComplianceDeclaration"
     JobArtifactItem:
       type: object
       required: [type, file_name, size_bytes, download_url, expires_at]

@@ -135,10 +135,6 @@ Request:
     "podcast_name": "Example Show",
     "speaker": "Host A",
     "episode_url": "https://example.com/ep/1"
-  },
-  "compliance_declaration": {
-    "for_personal_or_authorized_use_only": true,
-    "no_commercial_use": true
   }
 }
 ```
@@ -197,11 +193,7 @@ Request:
   "rss_url": "https://example.com/feed.xml",
   "episode_id": "ep_001",
   "template_id": "templateA-v0-book",
-  "output_formats": ["epub", "pdf", "md"],
-  "compliance_declaration": {
-    "for_personal_or_authorized_use_only": true,
-    "no_commercial_use": true
-  }
+  "output_formats": ["epub", "pdf", "md"]
 }
 ```
 
@@ -220,7 +212,6 @@ Fields:
 - `language`
 - `template_id`
 - `output_formats` (JSON string or repeated field)
-- `compliance_declaration` (JSON)
 
 Response (`202`) same as other job creation endpoints.
 
@@ -234,11 +225,7 @@ Request:
 {
   "episode_url": "https://example-platform.com/episode/123",
   "template_id": "templateA-v0-book",
-  "output_formats": ["epub", "pdf", "md"],
-  "compliance_declaration": {
-    "for_personal_or_authorized_use_only": true,
-    "no_commercial_use": true
-  }
+  "output_formats": ["epub", "pdf", "md"]
 }
 ```
 

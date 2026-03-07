@@ -9,10 +9,6 @@ import { createBookletOutlineFromWorkingNotes, createWorkingNotesFromTranscript 
 const router = Router();
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
-const complianceSchema = z.object({
-  for_personal_or_authorized_use_only: z.literal(true),
-  no_commercial_use: z.literal(true),
-});
 
 const epubTranscriptRequestSchema = z.object({
   title: z.string().min(1).max(300),
@@ -20,7 +16,6 @@ const epubTranscriptRequestSchema = z.object({
   transcript_text: z.string().min(10).max(MAX_TRANSCRIPT_CHARS),
   template_id: z.string().default("templateA-v0-book"),
   metadata: z.record(z.unknown()).optional(),
-  compliance_declaration: complianceSchema,
 });
 
 const workingNotesTranscriptRequestSchema = z.object({
@@ -28,7 +23,6 @@ const workingNotesTranscriptRequestSchema = z.object({
   language: z.string().min(1),
   transcript_text: z.string().min(10).max(config.llmInputMaxChars),
   metadata: z.record(z.unknown()).optional(),
-  compliance_declaration: complianceSchema,
 });
 
 const workingNotesSchema = z.object({
@@ -50,7 +44,6 @@ const bookletOutlineRequestSchema = z.object({
   language: z.string().min(1),
   working_notes: workingNotesSchema,
   metadata: z.record(z.unknown()).optional(),
-  compliance_declaration: complianceSchema,
 });
 
 function getUser(req: Request): { id: string; email: string } {
@@ -70,7 +63,6 @@ const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => 
     transcriptText: parsed.transcript_text,
     templateId: parsed.template_id,
     metadata: parsed.metadata,
-    compliance: parsed.compliance_declaration,
   });
   res.status(200).json(response);
 });
@@ -83,7 +75,6 @@ const createWorkingNotesFromTranscriptRoute = asyncHandler(async (req: Request, 
     language: parsed.language,
     transcriptText: parsed.transcript_text,
     metadata: parsed.metadata,
-    compliance: parsed.compliance_declaration,
   });
   res.status(200).json(response);
 });
@@ -96,7 +87,6 @@ const createBookletOutlineRoute = asyncHandler(async (req: Request, res) => {
     language: parsed.language,
     workingNotes: parsed.working_notes,
     metadata: parsed.metadata,
-    compliance: parsed.compliance_declaration,
   });
   res.status(200).json(response);
 });

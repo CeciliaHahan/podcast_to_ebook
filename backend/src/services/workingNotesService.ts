@@ -221,11 +221,7 @@ export async function createWorkingNotesFromTranscript(params: {
   language: string;
   transcriptText: string;
   metadata?: Record<string, unknown>;
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
 }) {
-  if (!params.compliance.for_personal_or_authorized_use_only || !params.compliance.no_commercial_use) {
-    throw new ApiError(400, "FORBIDDEN", "Compliance declaration must be accepted.");
-  }
   if (!config.llmApiKey) {
     throw new ApiError(503, "LLM_UNAVAILABLE", "LLM API key is not configured.");
   }
@@ -364,11 +360,7 @@ export async function createBookletOutlineFromWorkingNotes(params: {
   language: string;
   workingNotes: WorkingNotes;
   metadata?: Record<string, unknown>;
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
 }) {
-  if (!params.compliance.for_personal_or_authorized_use_only || !params.compliance.no_commercial_use) {
-    throw new ApiError(400, "FORBIDDEN", "Compliance declaration must be accepted.");
-  }
   if (!config.llmApiKey) {
     throw new ApiError(503, "LLM_UNAVAILABLE", "LLM API key is not configured.");
   }
