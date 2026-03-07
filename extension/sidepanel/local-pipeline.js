@@ -1,11 +1,4 @@
-import {
-  WORKING_NOTES_SYSTEM_PROMPT,
-  buildWorkingNotesPrompt,
-  OUTLINE_SYSTEM_PROMPT,
-  buildOutlinePrompt,
-  DRAFT_SYSTEM_PROMPT,
-  buildDraftPrompt,
-} from "./prompts.js";
+import { DEFAULT_PROMPTS, buildPrompt } from "./prompts.js";
 
 // Try to load a gitignored config file with a pre-set API key.
 // If config.local.js doesn't exist, fall back to empty (user enters key manually).
@@ -21,6 +14,7 @@ export const DEFAULT_LLM_SETTINGS = {
   llmBaseUrl: "https://openrouter.ai/api/v1",
   llmModel: "google/gemini-3-flash-preview",
   llmApiKey: _localApiKey,
+  reasoningEffort: "medium",
 };
 
 export const LLM_INPUT_MAX_CHARS = 80_000;
@@ -30,6 +24,7 @@ const OPENROUTER_HEADERS = {
   "X-Title": "Podcasts to Ebooks",
 };
 const SUPPORTED_LLM_HOSTS = new Set(["openrouter.ai", "api.openai.com"]);
+const OPENROUTER_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 function createLocalId(prefix) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
@@ -227,6 +222,11 @@ function normalizeBaseUrl(input) {
   return baseUrl;
 }
 
+function normalizeReasoningEffort(input) {
+  const normalized = String(input || DEFAULT_LLM_SETTINGS.reasoningEffort).trim().toLowerCase();
+  return OPENROUTER_REASONING_EFFORTS.has(normalized) ? normalized : DEFAULT_LLM_SETTINGS.reasoningEffort;
+}
+
 async function readJsonResponse(response) {
   try {
     return await response.json();
@@ -252,6 +252,25 @@ async function callJsonChatCompletion(params) {
   if (baseUrl.includes("openrouter.ai")) {
     Object.assign(headers, OPENROUTER_HEADERS);
   }
+  const reasoningEffort = normalizeReasoningEffort(params.settings?.reasoningEffort);
+  const requestBody = {
+    model: params.settings.llmModel,
+    temperature: params.temperature,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: params.systemPrompt,
+      },
+      {
+        role: "user",
+        content: params.prompt,
+      },
+    ],
+  };
+  if (baseUrl.includes("openrouter.ai")) {
+    requestBody.reasoning = { effort: reasoningEffort };
+  }
 
   try {
     params.pushStage({
@@ -261,6 +280,7 @@ async function callJsonChatCompletion(params) {
         model: params.settings.llmModel,
         temperature: params.temperature,
         response_format: "json_object",
+        reasoning: baseUrl.includes("openrouter.ai") ? { effort: reasoningEffort } : null,
       },
       input: {
         prompt_preview: params.prompt.slice(0, 5_000),
@@ -271,21 +291,7 @@ async function callJsonChatCompletion(params) {
       method: "POST",
       signal: controller.signal,
       headers,
-      body: JSON.stringify({
-        model: params.settings.llmModel,
-        temperature: params.temperature,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: params.systemPrompt,
-          },
-          {
-            role: "user",
-            content: params.prompt,
-          },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const payload = await readJsonResponse(response);
@@ -365,16 +371,20 @@ export async function createWorkingNotesFromTranscript(params) {
     },
   });
 
-  const prompt = buildWorkingNotesPrompt({
+  const systemPrompt = params.settings.prompts?.wnSystem || DEFAULT_PROMPTS.wnSystem;
+  const userTemplate = params.settings.prompts?.wnUser || DEFAULT_PROMPTS.wnUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     transcriptText: params.transcriptText,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: WORKING_NOTES_SYSTEM_PROMPT,
-    temperature: 0.2,
+    systemPrompt,
+    temperature: params.settings.temperature ?? 0.2,
     pushStage,
   });
   const workingNotes = readWorkingNotesFromUnknown(result.parsed, params.title);
@@ -419,16 +429,20 @@ export async function createBookletOutlineFromWorkingNotes(params) {
     },
   });
 
-  const prompt = buildOutlinePrompt({
+  const systemPrompt = params.settings.prompts?.outlineSystem || DEFAULT_PROMPTS.outlineSystem;
+  const userTemplate = params.settings.prompts?.outlineUser || DEFAULT_PROMPTS.outlineUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     workingNotes: params.workingNotes,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: OUTLINE_SYSTEM_PROMPT,
-    temperature: 0.2,
+    systemPrompt,
+    temperature: params.settings.temperature ?? 0.2,
     pushStage,
   });
   const bookletOutline = readBookletOutlineFromUnknown(result.parsed, params.title);
@@ -475,17 +489,21 @@ export async function createBookletDraftFromOutline(params) {
     },
   });
 
-  const prompt = buildDraftPrompt({
+  const systemPrompt = params.settings.prompts?.draftSystem || DEFAULT_PROMPTS.draftSystem;
+  const userTemplate = params.settings.prompts?.draftUser || DEFAULT_PROMPTS.draftUser;
+
+  const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
     workingNotes: params.workingNotes,
     bookletOutline: params.bookletOutline,
   });
+
   const result = await callJsonChatCompletion({
     settings: params.settings,
     prompt,
-    systemPrompt: DRAFT_SYSTEM_PROMPT,
-    temperature: 0.3,
+    systemPrompt,
+    temperature: params.settings.temperature ?? 0.3,
     pushStage,
   });
   const bookletDraft = readBookletDraftFromUnknown(result.parsed, params.title);

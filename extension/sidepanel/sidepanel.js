@@ -5,12 +5,14 @@ import {
   createBookletOutlineFromWorkingNotes,
   createWorkingNotesFromTranscript,
 } from "./local-pipeline.js";
+import { DEFAULT_PROMPTS } from "./prompts.js";
 import { createEpubFromBookletDraft } from "./local-epub.js";
 
 const SETTINGS_KEY = "pte_settings_v2";
 const WORKSPACE_KEY = "pte_workspace_v1";
 const HISTORY_KEY = "pte_history_v1";
 const HISTORY_MAX_ENTRIES = 100;
+const REASONING_EFFORT_VALUES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 const elements = {
   // Views
@@ -21,6 +23,8 @@ const elements = {
   llmBaseUrl: document.getElementById("llm-base-url"),
   llmApiKey: document.getElementById("llm-api-key"),
   llmModel: document.getElementById("llm-model"),
+  llmTemperature: document.getElementById("llm-temperature"),
+  llmReasoningEffort: document.getElementById("llm-reasoning-effort"),
   saveSettings: document.getElementById("save-settings"),
   loadSample: document.getElementById("load-sample"),
   settingsFeedback: document.getElementById("settings-feedback"),
@@ -79,6 +83,20 @@ const elements = {
   openHistoryBtn: document.getElementById("open-history"),
   historyEmpty: document.getElementById("history-empty"),
   historyList: document.getElementById("history-list"),
+  
+  // Prompt Editor Elements
+  openPromptsBtn: document.getElementById("open-prompts"),
+  savePrompts: document.getElementById("save-prompts"),
+  resetPrompts: document.getElementById("reset-prompts"),
+  promptsFeedback: document.getElementById("prompts-feedback"),
+  prompts: {
+    wnSystem: document.getElementById("prompt-wn-system"),
+    wnUser: document.getElementById("prompt-wn-user"),
+    outlineSystem: document.getElementById("prompt-outline-system"),
+    outlineUser: document.getElementById("prompt-outline-user"),
+    draftSystem: document.getElementById("prompt-draft-system"),
+    draftUser: document.getElementById("prompt-draft-user"),
+  },
 
   // Modal Triggers
   modalOverlay: document.getElementById("modal-overlay"),
@@ -195,6 +213,11 @@ function toJsonPreview(value, maxChars = 2000) {
 function localizeStage(stage) {
   const key = String(stage || "").trim().toLowerCase();
   return STAGE_LABELS[key] || stage || "-";
+}
+
+function normalizeReasoningEffort(value) {
+  const normalized = String(value || DEFAULT_LLM_SETTINGS.reasoningEffort).trim().toLowerCase();
+  return REASONING_EFFORT_VALUES.has(normalized) ? normalized : DEFAULT_LLM_SETTINGS.reasoningEffort;
 }
 
 function renderError(message) {
@@ -745,7 +768,16 @@ function getStorageArea() {
 
 async function getSettings() {
   const stored = await getStorageArea().get([SETTINGS_KEY]);
-  return stored[SETTINGS_KEY] || { ...DEFAULT_LLM_SETTINGS };
+  const saved = stored[SETTINGS_KEY] || {};
+  return {
+    ...DEFAULT_LLM_SETTINGS,
+    ...saved,
+    reasoningEffort: normalizeReasoningEffort(saved.reasoningEffort),
+    prompts: {
+      ...DEFAULT_PROMPTS,
+      ...(saved.prompts || {}),
+    },
+  };
 }
 
 async function loadSettings() {
@@ -753,6 +785,17 @@ async function loadSettings() {
   elements.llmBaseUrl.value = settings.llmBaseUrl || DEFAULT_LLM_SETTINGS.llmBaseUrl;
   elements.llmApiKey.value = settings.llmApiKey || DEFAULT_LLM_SETTINGS.llmApiKey || "";
   elements.llmModel.value = settings.llmModel || DEFAULT_LLM_SETTINGS.llmModel;
+  if (settings.temperature !== undefined) {
+    elements.llmTemperature.value = settings.temperature;
+  }
+  elements.llmReasoningEffort.value = normalizeReasoningEffort(settings.reasoningEffort);
+  
+  elements.prompts.wnSystem.value = settings.prompts.wnSystem;
+  elements.prompts.wnUser.value = settings.prompts.wnUser;
+  elements.prompts.outlineSystem.value = settings.prompts.outlineSystem;
+  elements.prompts.outlineUser.value = settings.prompts.outlineUser;
+  elements.prompts.draftSystem.value = settings.prompts.draftSystem;
+  elements.prompts.draftUser.value = settings.prompts.draftUser;
 }
 
 async function saveSettings() {
@@ -760,6 +803,16 @@ async function saveSettings() {
     llmBaseUrl: String(elements.llmBaseUrl.value || DEFAULT_LLM_SETTINGS.llmBaseUrl).trim().replace(/\/$/, ""),
     llmApiKey: String(elements.llmApiKey.value || "").trim(),
     llmModel: String(elements.llmModel.value || DEFAULT_LLM_SETTINGS.llmModel).trim() || DEFAULT_LLM_SETTINGS.llmModel,
+    temperature: elements.llmTemperature.value ? Number(elements.llmTemperature.value) : undefined,
+    reasoningEffort: normalizeReasoningEffort(elements.llmReasoningEffort.value),
+    prompts: {
+      wnSystem: elements.prompts.wnSystem.value,
+      wnUser: elements.prompts.wnUser.value,
+      outlineSystem: elements.prompts.outlineSystem.value,
+      outlineUser: elements.prompts.outlineUser.value,
+      draftSystem: elements.prompts.draftSystem.value,
+      draftUser: elements.prompts.draftUser.value,
+    }
   };
   await getStorageArea().set({ [SETTINGS_KEY]: settings });
   return settings;
@@ -865,6 +918,38 @@ async function init() {
       elements.saveSettings.disabled = false;
       elements.saveSettings.textContent = "保存设置";
     }
+  });
+
+  // Prompts
+  elements.openPromptsBtn.addEventListener("click", () => openModal("modal-prompts"));
+
+  elements.savePrompts.addEventListener("click", async () => {
+    try {
+      elements.savePrompts.disabled = true;
+      elements.savePrompts.textContent = "保存中...";
+      await saveSettings();
+      elements.promptsFeedback.textContent = "提示词已保存！";
+      elements.promptsFeedback.style.color = "var(--success)";
+      setTimeout(() => { elements.promptsFeedback.textContent = ""; }, 2000);
+    } catch (error) {
+      elements.promptsFeedback.textContent = "保存失败";
+      elements.promptsFeedback.style.color = "var(--error)";
+    } finally {
+      elements.savePrompts.disabled = false;
+      elements.savePrompts.textContent = "保存提示词";
+    }
+  });
+
+  elements.resetPrompts.addEventListener("click", () => {
+    if (!confirm("确定要恢复默认提示词吗？当前修改将会丢失。")) return;
+    elements.prompts.wnSystem.value = DEFAULT_PROMPTS.wnSystem;
+    elements.prompts.wnUser.value = DEFAULT_PROMPTS.wnUser;
+    elements.prompts.outlineSystem.value = DEFAULT_PROMPTS.outlineSystem;
+    elements.prompts.outlineUser.value = DEFAULT_PROMPTS.outlineUser;
+    elements.prompts.draftSystem.value = DEFAULT_PROMPTS.draftSystem;
+    elements.prompts.draftUser.value = DEFAULT_PROMPTS.draftUser;
+    elements.promptsFeedback.textContent = "已恢复默认，请点击保存。";
+    elements.promptsFeedback.style.color = "var(--muted)";
   });
   
   // Sample Data

@@ -15,6 +15,7 @@
         <h1>播客转 EPUB</h1>
         <div class="top-nav-actions">
           <button id="open-history" class="icon-btn" aria-label="历史记录">🕐</button>
+          <button id="open-prompts" class="icon-btn" aria-label="提示词">📝</button>
           <button id="open-settings" class="icon-btn" aria-label="设置">⚙️</button>
         </div>
       </header>
@@ -189,6 +190,47 @@
       </div>
     </div>
 
+    <!-- Prompt Editor Modal -->
+    <div id="modal-prompts" class="modal-panel slide-out">
+      <div class="modal-header">
+        <h2>提示词游乐场</h2>
+        <button class="close-modal icon-btn" data-target="modal-prompts">✕</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+        <p class="micro-hint">在这里修改各个阶段的模型提示词。修改后会自动保存并在下次生成时生效。</p>
+        
+        <details class="details-card" open>
+          <summary>Working Notes</summary>
+          <div class="details-body" style="padding: 12px; display: grid; gap: 8px;">
+            <label>System Prompt<textarea id="prompt-wn-system" style="min-height: 80px; font-size: 12px;"></textarea></label>
+            <label>User Prompt Template<textarea id="prompt-wn-user" style="min-height: 200px; font-size: 12px; font-family: monospace;"></textarea></label>
+          </div>
+        </details>
+
+        <details class="details-card">
+          <summary>Booklet Outline</summary>
+          <div class="details-body" style="padding: 12px; display: grid; gap: 8px;">
+            <label>System Prompt<textarea id="prompt-outline-system" style="min-height: 80px; font-size: 12px;"></textarea></label>
+            <label>User Prompt Template<textarea id="prompt-outline-user" style="min-height: 200px; font-size: 12px; font-family: monospace;"></textarea></label>
+          </div>
+        </details>
+
+        <details class="details-card">
+          <summary>Booklet Draft</summary>
+          <div class="details-body" style="padding: 12px; display: grid; gap: 8px;">
+            <label>System Prompt<textarea id="prompt-draft-system" style="min-height: 80px; font-size: 12px;"></textarea></label>
+            <label>User Prompt Template<textarea id="prompt-draft-user" style="min-height: 200px; font-size: 12px; font-family: monospace;"></textarea></label>
+          </div>
+        </details>
+
+        <div class="actions" style="margin-top: auto;">
+          <button id="save-prompts" type="button">保存提示词</button>
+          <button id="reset-prompts" type="button" class="ghost">恢复默认</button>
+        </div>
+        <p id="prompts-feedback" class="feedback" aria-live="polite" style="text-align: center; margin-top: 8px;"></p>
+      </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="modal-settings" class="modal-panel slide-out">
       <div class="modal-header">
@@ -210,10 +252,34 @@
             <input id="llm-api-key" type="password" placeholder="填入你自己的 key" />
           </label>
         </div>
+
+        <details class="details-card" style="margin-top: 16px;">
+          <summary>高级参数</summary>
+          <div class="details-body grid">
+            <label>
+              Temperature
+              <input id="llm-temperature" type="number" step="0.1" min="0" max="2" placeholder="0.2" />
+              <span class="micro-hint">控制输出的随机性（0.0最确定，2.0最发散）。</span>
+            </label>
+            <label>
+              Reasoning Effort
+              <select id="llm-reasoning-effort">
+                <option value="none">none</option>
+                <option value="minimal">minimal</option>
+                <option value="low">low</option>
+                <option value="medium" selected>medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+              </select>
+              <span class="micro-hint">OpenRouter 推理强度。默认 medium，更稳妥；越高通常越贵也越慢。</span>
+            </label>
+          </div>
+        </details>
+
         <div class="actions" style="margin-top: 16px;">
           <button id="save-settings" type="button">保存设置</button>
         </div>
-        <p class="feedback">API key 只保存在当前 Chrome 配置文件的本地存储里，不会再走 `localhost` 后端。</p>
+        <p class="feedback">API key 只保存在当前 Chrome 配置 文件的本地存储里，不会再走 `localhost` 后端。</p>
         <p id="settings-feedback" class="feedback" aria-live="polite"></p>
       </div>
     </div>
