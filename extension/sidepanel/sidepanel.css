@@ -278,6 +278,23 @@ code {
   gap: 10px;
 }
 
+.working-notes-explainer {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #f7fbff;
+  border: 1px solid #dbe7f6;
+}
+
+.working-notes-explainer p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .working-notes-summary-block,
 .working-notes-sections-block {
   display: grid;
