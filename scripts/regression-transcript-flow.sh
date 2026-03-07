@@ -3,13 +3,9 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 AUTH_HEADER="${AUTH_HEADER:-Authorization: Bearer dev:cecilia@example.com}"
-POLL_SECONDS="${POLL_SECONDS:-40}"
-CREATE_PATH="${CREATE_PATH:-/v1/jobs/from-transcript}"
-INCLUDE_OUTPUT_FORMATS="${INCLUDE_OUTPUT_FORMATS:-1}"
-EXPECT_INLINE_DETAILS="${EXPECT_INLINE_DETAILS:-0}"
+CREATE_PATH="${CREATE_PATH:-/v1/epub/from-transcript}"
 
-REQUEST_PAYLOAD="$(INCLUDE_OUTPUT_FORMATS="$INCLUDE_OUTPUT_FORMATS" node -e '
-const includeOutputFormats = process.env.INCLUDE_OUTPUT_FORMATS !== "0";
+REQUEST_PAYLOAD="$(node -e '
 const payload = {
   title: "Regression Test Episode",
   language: "zh-CN",
@@ -21,9 +17,6 @@ const payload = {
     no_commercial_use: true,
   },
 };
-if (includeOutputFormats) {
-  payload.output_formats = ["epub", "pdf", "md"];
-}
 process.stdout.write(JSON.stringify(payload));
 ')"
 
@@ -51,49 +44,24 @@ CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL$CREATE_PATH" \
 JOB_ID="$(json_get "$CREATE_RESPONSE" 'data.job_id')"
 echo "job_id=$JOB_ID"
 
-if [ "$EXPECT_INLINE_DETAILS" = "1" ]; then
-  assert_json "$CREATE_RESPONSE" 'Array.isArray(data.artifacts) && data.artifacts.length >= 1' 'Expected inline artifacts in create response.'
-  assert_json "$CREATE_RESPONSE" 'Array.isArray(data.stages) && data.stages.length >= 1' 'Expected inline stages in create response.'
-  assert_json "$CREATE_RESPONSE" 'data.artifacts.some((item) => item.type === "epub")' 'Expected inline EPUB artifact.'
-  INLINE_DOWNLOAD_URL="$(json_get "$CREATE_RESPONSE" 'data.artifacts[0]?.download_url')"
-  curl -fsS "$INLINE_DOWNLOAD_URL" >/dev/null
-fi
-
-echo "[3/5] poll job status"
-STATUS_RESPONSE=''
-for _ in $(seq 1 "$POLL_SECONDS"); do
-  STATUS_RESPONSE="$(curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID")"
-  STATUS_VALUE="$(json_get "$STATUS_RESPONSE" 'data.status')"
-  if [ "$STATUS_VALUE" = "succeeded" ]; then
-    break
-  fi
-  if [ "$STATUS_VALUE" = "failed" ] || [ "$STATUS_VALUE" = "canceled" ]; then
-    echo "Job ended in non-success status: $STATUS_VALUE"
-    echo "$STATUS_RESPONSE"
-    exit 1
-  fi
-  sleep 1
-done
-
-FINAL_STATUS="$(json_get "$STATUS_RESPONSE" 'data.status')"
+echo "[3/5] verify inline success"
+FINAL_STATUS="$(json_get "$CREATE_RESPONSE" 'data.status')"
 if [ "$FINAL_STATUS" != "succeeded" ]; then
-  echo "Job did not succeed within timeout."
-  echo "$STATUS_RESPONSE"
+  echo "Inline run failed."
+  echo "$CREATE_RESPONSE"
   exit 1
 fi
 
-echo "[4/5] verify artifacts"
-ARTIFACTS_RESPONSE="$(curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/artifacts")"
-assert_json "$ARTIFACTS_RESPONSE" 'Array.isArray(data.artifacts) && data.artifacts.length >= 1' 'Expected at least one artifact.'
-assert_json "$ARTIFACTS_RESPONSE" 'data.artifacts.some((item) => item.type === "epub")' 'Expected EPUB artifact to exist.'
-FIRST_DOWNLOAD_URL="$(json_get "$ARTIFACTS_RESPONSE" 'data.artifacts[0]?.download_url')"
+echo "[4/5] verify inline artifacts"
+assert_json "$CREATE_RESPONSE" 'Array.isArray(data.artifacts) && data.artifacts.length >= 1' 'Expected at least one inline artifact.'
+assert_json "$CREATE_RESPONSE" 'data.artifacts.some((item) => item.type === "epub")' 'Expected EPUB artifact to exist.'
+FIRST_DOWNLOAD_URL="$(json_get "$CREATE_RESPONSE" 'data.artifacts[0]?.download_url')"
 curl -fsS "$FIRST_DOWNLOAD_URL" >/dev/null
 
-echo "[5/5] verify inspector"
-INSPECTOR_RESPONSE="$(curl -sS -H "$AUTH_HEADER" "$BASE_URL/v1/jobs/$JOB_ID/inspector")"
-assert_json "$INSPECTOR_RESPONSE" 'Array.isArray(data.stages) && data.stages.length >= 2' 'Expected inspector to contain stage records.'
-assert_json "$INSPECTOR_RESPONSE" 'data.stages.some((stage) => stage.stage === "transcript")' 'Expected transcript stage in inspector.'
-assert_json "$INSPECTOR_RESPONSE" 'data.stages.some((stage) => stage.stage === "normalization")' 'Expected normalization stage in inspector.'
+echo "[5/5] verify inline inspector"
+assert_json "$CREATE_RESPONSE" 'Array.isArray(data.stages) && data.stages.length >= 2' 'Expected inspector to contain stage records.'
+assert_json "$CREATE_RESPONSE" 'data.stages.some((stage) => stage.stage === "transcript")' 'Expected transcript stage in inspector.'
+assert_json "$CREATE_RESPONSE" 'data.stages.some((stage) => stage.stage === "normalization")' 'Expected normalization stage in inspector.'
 
 echo "PASS: transcript flow regression check passed"
 echo "summary: job_id=$JOB_ID, first_download_url=$FIRST_DOWNLOAD_URL"

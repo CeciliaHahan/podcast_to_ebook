@@ -39,10 +39,6 @@ function prettyJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function normalizeError(error) {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -77,7 +73,7 @@ async function apiRequest({ baseUrl, token, pathName, method = "GET", body, retr
           throw new Error(message);
         }
         lastError = new Error(message);
-        await sleep(retryDelayMs);
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
         continue;
       }
 
@@ -87,28 +83,11 @@ async function apiRequest({ baseUrl, token, pathName, method = "GET", body, retr
       if (attempt > retries) {
         break;
       }
-      await sleep(retryDelayMs);
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
 
   throw new Error(normalizeError(lastError));
-}
-
-async function pollJob({ baseUrl, token, jobId, maxAttempts = 120 }) {
-  const snapshots = [];
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const status = await apiRequest({
-      baseUrl,
-      token,
-      pathName: `/v1/jobs/${jobId}`,
-    });
-    snapshots.push(status);
-    if (status.status === "succeeded" || status.status === "failed" || status.status === "canceled") {
-      return { status, snapshots };
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error(`Job polling timeout for ${jobId}`);
 }
 
 function extractStage(inspector, stageName) {
@@ -250,7 +229,6 @@ async function runMethodOnce({ cfg, method, transcriptText }) {
     language: cfg.language,
     transcript_text: transcriptText,
     template_id: "templateA-v0-book",
-    output_formats: ["epub", "md"],
     metadata: {
       episode_url: cfg.episodeUrl,
       generation_method: method.code,
@@ -264,34 +242,23 @@ async function runMethodOnce({ cfg, method, transcriptText }) {
   const createResponse = await apiRequest({
     baseUrl: cfg.baseUrl,
     token: cfg.token,
-    pathName: "/v1/jobs/from-transcript",
+    pathName: "/v1/epub/from-transcript",
     method: "POST",
     body: createRequest,
   });
 
   const jobId = createResponse.job_id;
-  const { status: finalStatus, snapshots } = await pollJob({
-    baseUrl: cfg.baseUrl,
-    token: cfg.token,
-    jobId,
-  });
-
-  const inspector = await apiRequest({
-    baseUrl: cfg.baseUrl,
-    token: cfg.token,
-    pathName: `/v1/jobs/${jobId}/inspector`,
-  });
-
-  let artifacts = null;
-  try {
-    artifacts = await apiRequest({
-      baseUrl: cfg.baseUrl,
-      token: cfg.token,
-      pathName: `/v1/jobs/${jobId}/artifacts`,
-    });
-  } catch {
-    artifacts = null;
-  }
+  const finalStatus = {
+    status: createResponse.status ?? "failed",
+    stage: createResponse.status === "succeeded" ? "completed" : "failed",
+  };
+  const snapshots = [finalStatus];
+  const inspector = {
+    stages: Array.isArray(createResponse.stages) ? createResponse.stages : [],
+  };
+  const artifacts = {
+    artifacts: Array.isArray(createResponse.artifacts) ? createResponse.artifacts : [],
+  };
 
   const mdItem = artifacts?.artifacts?.find((item) => item.type === "md");
   const epubItem = artifacts?.artifacts?.find((item) => item.type === "epub");
@@ -347,7 +314,7 @@ async function runMethod({ cfg, method, transcriptText, runDir }) {
       if (attempt < maxAttempts) {
         // eslint-disable-next-line no-console
         console.log(`Retrying ${method.code} (attempt ${attempt + 1}/${maxAttempts}) after: ${normalizeError(error)}`);
-        await sleep(1200);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       }
     }
   }
@@ -360,7 +327,6 @@ async function runMethod({ cfg, method, transcriptText, runDir }) {
         title: cfg.title,
         language: cfg.language,
         template_id: "templateA-v0-book",
-        output_formats: ["epub", "md"],
         metadata: {
           episode_url: cfg.episodeUrl,
           generation_method: method.code,
