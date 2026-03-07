@@ -6,9 +6,8 @@
   "minimum_chrome_version": "116",
   "permissions": ["sidePanel", "storage"],
   "host_permissions": [
-    "http://localhost:8080/*",
-    "http://127.0.0.1:8080/*",
-    "https://api.example.com/*"
+    "https://openrouter.ai/*",
+    "https://api.openai.com/*"
   ],
   "action": {
     "default_title": "Podcasts to Ebooks",
