@@ -59,8 +59,6 @@ const elements = {
   
   // Pipeline Utilities
   errorBox: document.getElementById("error-box"),
-  eventsList: document.getElementById("events-list"),
-  
   // Modals Content (Notes)
   workingNotesEmpty: document.getElementById("working-notes-empty"),
   workingNotesPanel: document.getElementById("working-notes-panel"),
@@ -98,6 +96,16 @@ const elements = {
     draftUser: document.getElementById("prompt-draft-user"),
   },
 
+  // Process Modal
+  processModalTitle: document.getElementById("process-modal-title"),
+  processContent: document.getElementById("process-content"),
+  processBtns: {
+    notes: document.getElementById("btn-process-notes"),
+    outline: document.getElementById("btn-process-outline"),
+    draft: document.getElementById("btn-process-draft"),
+    epub: document.getElementById("btn-process-epub"),
+  },
+
   // Modal Triggers
   modalOverlay: document.getElementById("modal-overlay"),
   openSettingsBtn: document.getElementById("open-settings"),
@@ -107,24 +115,17 @@ const elements = {
 let latestWorkingNotes = null;
 let latestBookletOutline = null;
 let latestBookletDraft = null;
-let latestStages = [];
+let latestStepStages = { notes: [], outline: [], draft: [], epub: [] };
 let latestArtifactSummary = null;
 let generatedArtifactUrls = [];
 let workspaceSaveTimer = null;
 let isPipelineRunning = false;
 
-const STAGE_LABELS = {
-  transcript: "Transcript",
-  queued: "排队",
-  ingest: "输入处理",
-  normalization: "规范化",
-  llm_request: "模型请求",
-  llm_response: "模型响应",
-  render: "渲染",
-  pdf: "PDF 渲染",
-  epub: "EPUB 渲染",
-  finalize: "收尾",
-  completed: "完成",
+const STEP_TITLES = {
+  notes: "Working Notes 生成过程",
+  outline: "Booklet Outline 生成过程",
+  draft: "Booklet Draft 生成过程",
+  epub: "EPUB 导出过程",
 };
 
 // -----------------------------------------------------------------------------
@@ -202,19 +203,6 @@ function autoGenerateTitle(transcript) {
   return `播客笔记 ${new Date().toISOString().slice(0, 10)}`;
 }
 
-function toJsonPreview(value, maxChars = 2000) {
-  if (value === undefined) return "（无）";
-  let text = "";
-  try { text = JSON.stringify(value, null, 2); } catch { text = String(value); }
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n... <已截断>`;
-}
-
-function localizeStage(stage) {
-  const key = String(stage || "").trim().toLowerCase();
-  return STAGE_LABELS[key] || stage || "-";
-}
-
 function normalizeReasoningEffort(value) {
   const normalized = String(value || DEFAULT_LLM_SETTINGS.reasoningEffort).trim().toLowerCase();
   return REASONING_EFFORT_VALUES.has(normalized) ? normalized : DEFAULT_LLM_SETTINGS.reasoningEffort;
@@ -249,27 +237,28 @@ function updateProgress(status, stage, percentage) {
 function setStepState(stepKey, state, statusText) {
   const stepEl = elements.steps[stepKey];
   if (!stepEl) return;
-  
+
   stepEl.classList.remove("active", "completed", "error");
   if (state) stepEl.classList.add(state);
-  
+
   const statusEl = stepEl.querySelector(".step-status");
-  
+  const viewBtnMap = { notes: "viewNotes", outline: "viewOutline", draft: "viewDraft" };
+  const viewBtnKey = viewBtnMap[stepKey];
+  const processBtn = elements.processBtns[stepKey];
+
   if (state === "active") {
     statusEl.innerHTML = `<span class="spinner"></span>${statusText || "处理中..."}`;
   } else if (state === "completed") {
     statusEl.textContent = statusText || "完成";
-    // Show view button
-    const btnMap = { notes: "viewNotes", outline: "viewOutline", draft: "viewDraft" };
-    const btnKey = btnMap[stepKey];
-    if (btnKey) elements.btns[btnKey].hidden = false;
+    if (viewBtnKey) elements.btns[viewBtnKey].hidden = false;
+    if (processBtn && latestStepStages[stepKey]?.length) processBtn.hidden = false;
   } else if (state === "error") {
     statusEl.textContent = statusText || "失败";
+    if (processBtn && latestStepStages[stepKey]?.length) processBtn.hidden = false;
   } else {
     statusEl.textContent = statusText || "等待中";
-    const btnMap = { notes: "viewNotes", outline: "viewOutline", draft: "viewDraft" };
-    const btnKey = btnMap[stepKey];
-    if (btnKey) elements.btns[btnKey].hidden = true;
+    if (viewBtnKey) elements.btns[viewBtnKey].hidden = true;
+    if (processBtn) processBtn.hidden = true;
   }
 }
 
@@ -297,80 +286,152 @@ function renderArtifacts(data) {
   }
 }
 
-function renderInspector(stages) {
-  latestStages = Array.isArray(stages) ? stages : [];
-  elements.eventsList.innerHTML = "";
-  if (!latestStages.length) {
-    const li = document.createElement("li");
-    li.style.color = "var(--muted)";
-    li.style.textAlign = "center";
-    li.style.padding = "16px";
-    li.textContent = "暂无调试日志。";
-    elements.eventsList.appendChild(li);
+// -----------------------------------------------------------------------------
+// Process View (per-step structured cards)
+// -----------------------------------------------------------------------------
+
+function renderProcessView(stepKey) {
+  const stages = latestStepStages[stepKey] || [];
+  elements.processModalTitle.textContent = STEP_TITLES[stepKey] || "生成过程";
+  elements.processContent.innerHTML = "";
+
+  if (!stages.length) {
+    elements.processContent.innerHTML = '<div class="empty-state">暂无过程数据</div>';
     return;
   }
-  for (const stage of latestStages) {
-    const li = document.createElement("li");
-    
-    // Header
-    const header = document.createElement("div");
-    header.className = "log-header";
-    
-    const title = document.createElement("span");
-    title.textContent = localizeStage(stage.stage);
-    
-    const time = document.createElement("span");
-    time.className = "log-time";
-    time.textContent = new Date(stage.ts).toLocaleTimeString();
-    
-    header.appendChild(title);
-    header.appendChild(time);
-    li.appendChild(header);
 
-    // Note
-    if (stage.notes) {
-      const note = document.createElement("div");
-      note.className = "log-note";
-      note.textContent = stage.notes;
-      li.appendChild(note);
-    }
+  const inputStage = stages.find(s => s.stage === "transcript" || s.stage === "normalization");
+  const requestStage = stages.find(s => s.stage === "llm_request");
+  const responseStage = stages.find(s => s.stage === "llm_response");
+  const epubStage = stages.find(s => s.stage === "epub");
 
-    // Input Details
-    if (stage.input) {
-      const inputDetails = document.createElement("details");
-      inputDetails.className = "log-details";
-      const summary = document.createElement("summary");
-      summary.textContent = "请求输入 (Input)";
-      const body = document.createElement("div");
-      body.className = "log-details-body";
-      const pre = document.createElement("pre");
-      pre.className = "log-json";
-      pre.textContent = toJsonPreview(stage.input);
-      body.appendChild(pre);
-      inputDetails.appendChild(summary);
-      inputDetails.appendChild(body);
-      li.appendChild(inputDetails);
-    }
-
-    // Output Details
-    if (stage.output) {
-      const outputDetails = document.createElement("details");
-      outputDetails.className = "log-details";
-      const summary = document.createElement("summary");
-      summary.textContent = "响应输出 (Output)";
-      const body = document.createElement("div");
-      body.className = "log-details-body";
-      const pre = document.createElement("pre");
-      pre.className = "log-json";
-      pre.textContent = toJsonPreview(stage.output);
-      body.appendChild(pre);
-      outputDetails.appendChild(summary);
-      outputDetails.appendChild(body);
-      li.appendChild(outputDetails);
-    }
-
-    elements.eventsList.appendChild(li);
+  // Duration card
+  if (stages.length >= 2) {
+    const first = new Date(stages[0].ts);
+    const last = new Date(stages[stages.length - 1].ts);
+    const durationSec = ((last - first) / 1000).toFixed(1);
+    elements.processContent.appendChild(buildProcessCard("耗时", [
+      ["用时", `${durationSec} 秒`],
+      ["开始", new Date(stages[0].ts).toLocaleTimeString()],
+    ]));
   }
+
+  // Input summary card
+  if (inputStage?.input) {
+    const inp = inputStage.input;
+    const fields = [];
+    if (inp.transcript_chars) fields.push(["转录文本长度", `${inp.transcript_chars.toLocaleString()} 字符`]);
+    if (inp.source_type) fields.push(["输入类型", inp.source_type]);
+    if (inp.section_count != null) fields.push(["章节数", String(inp.section_count)]);
+    if (inp.summary_count != null) fields.push(["摘要条数", String(inp.summary_count)]);
+    if (inp.outline_section_count != null) fields.push(["大纲章节数", String(inp.outline_section_count)]);
+    if (inp.notes_section_count != null) fields.push(["笔记章节数", String(inp.notes_section_count)]);
+    if (fields.length) elements.processContent.appendChild(buildProcessCard("输入概况", fields));
+  }
+
+  // Model config card
+  if (requestStage?.config || inputStage?.config) {
+    const cfg = requestStage?.config || inputStage?.config;
+    const fields = [];
+    if (cfg.model) fields.push(["模型", cfg.model]);
+    if (cfg.temperature != null) fields.push(["温度", String(cfg.temperature)]);
+    if (cfg.response_format) fields.push(["输出格式", cfg.response_format]);
+    if (cfg.reasoning?.effort) fields.push(["推理强度", cfg.reasoning.effort]);
+    if (cfg.endpoint) fields.push(["接口", cfg.endpoint.replace(/^https?:\/\//, "")]);
+    if (cfg.flow) fields.push(["流程", cfg.flow]);
+    if (fields.length) elements.processContent.appendChild(buildProcessCard("模型配置", fields));
+  }
+
+  // Result card
+  if (responseStage?.output) {
+    const out = responseStage.output;
+    const fields = [];
+    if (out.http_status != null) fields.push(["HTTP 状态", String(out.http_status), out.http_status === 200 ? "success" : "error"]);
+    if (out.parse_ok != null) fields.push(["解析结果", out.parse_ok ? "成功" : "失败", out.parse_ok ? "success" : "error"]);
+    if (fields.length) elements.processContent.appendChild(buildProcessCard("处理结果", fields));
+  }
+
+  // EPUB-specific result
+  if (epubStage?.output) {
+    const out = epubStage.output;
+    const fields = [];
+    if (out.file_name) fields.push(["文件名", out.file_name]);
+    if (out.size_bytes) fields.push(["文件大小", `${(out.size_bytes / 1024).toFixed(1)} KB`]);
+    if (out.checksum_sha256) fields.push(["校验值", out.checksum_sha256.slice(0, 16) + "..."]);
+    if (fields.length) elements.processContent.appendChild(buildProcessCard("导出结果", fields));
+  }
+
+  // Prompt text (collapsible, full content)
+  if (requestStage?.input?.prompt_preview) {
+    elements.processContent.appendChild(
+      buildCollapsibleText("发送给模型的提示词", requestStage.input.prompt_preview)
+    );
+  }
+
+  // Response text (collapsible, full content)
+  if (responseStage?.output?.raw_content_preview) {
+    elements.processContent.appendChild(
+      buildCollapsibleText("模型返回的内容", responseStage.output.raw_content_preview)
+    );
+  }
+
+  // Input previews
+  if (inputStage?.input?.transcript_preview) {
+    elements.processContent.appendChild(
+      buildCollapsibleText("输入的转录文本（预览）", inputStage.input.transcript_preview)
+    );
+  }
+  if (inputStage?.input?.working_notes_preview) {
+    elements.processContent.appendChild(
+      buildCollapsibleText("输入的 Working Notes", inputStage.input.working_notes_preview)
+    );
+  }
+  if (inputStage?.input?.outline_preview) {
+    elements.processContent.appendChild(
+      buildCollapsibleText("输入的 Outline", inputStage.input.outline_preview)
+    );
+  }
+}
+
+function buildProcessCard(label, fields) {
+  const card = document.createElement("div");
+  card.className = "process-card";
+  const labelEl = document.createElement("div");
+  labelEl.className = "process-card-label";
+  labelEl.textContent = label;
+  card.appendChild(labelEl);
+  for (const [key, value, cls] of fields) {
+    const row = document.createElement("div");
+    row.className = "process-field";
+    const k = document.createElement("span");
+    k.className = "process-field-key";
+    k.textContent = key;
+    const v = document.createElement("span");
+    v.className = "process-field-value" + (cls ? ` ${cls}` : "");
+    v.textContent = value;
+    row.appendChild(k);
+    row.appendChild(v);
+    card.appendChild(row);
+  }
+  return card;
+}
+
+function buildCollapsibleText(label, text) {
+  const block = document.createElement("div");
+  block.className = "process-text-block";
+  const labelEl = document.createElement("div");
+  labelEl.className = "process-text-label";
+  labelEl.textContent = label;
+  const body = document.createElement("div");
+  body.className = "process-text-body";
+  body.textContent = text;
+  labelEl.addEventListener("click", () => {
+    labelEl.classList.toggle("open");
+    body.classList.toggle("open");
+  });
+  block.appendChild(labelEl);
+  block.appendChild(body);
+  return block;
 }
 
 function renderWorkingNotes(notes) {
@@ -492,6 +553,7 @@ async function saveToHistory() {
     workingNotes: latestWorkingNotes,
     bookletOutline: latestBookletOutline,
     bookletDraft: latestBookletDraft,
+    stepStages: latestStepStages,
     artifactSummary: latestArtifactSummary
       ? { file_name: latestArtifactSummary.file_name, size_bytes: latestArtifactSummary.size_bytes, created_at: latestArtifactSummary.created_at }
       : null,
@@ -614,6 +676,7 @@ function loadFromHistory(entry) {
   elements.transcriptText.value = entry.transcriptPreview || "";
 
   // Restore state
+  if (entry.stepStages) latestStepStages = entry.stepStages;
   if (entry.workingNotes) renderWorkingNotes(entry.workingNotes);
   if (entry.bookletOutline) renderBookletOutline(entry.bookletOutline);
   if (entry.bookletDraft) renderBookletDraft(entry.bookletDraft);
@@ -655,7 +718,7 @@ function resetPipelineUI() {
   latestWorkingNotes = null;
   latestBookletOutline = null;
   latestBookletDraft = null;
-  latestStages = [];
+  latestStepStages = { notes: [], outline: [], draft: [], epub: [] };
 }
 
 async function handleGeneratePipeline(event) {
@@ -665,8 +728,6 @@ async function handleGeneratePipeline(event) {
   
   resetPipelineUI();
   switchView("pipeline");
-  
-  let currentStageAcc = [];
   
   try {
     const settings = await getSettings();
@@ -686,8 +747,7 @@ async function handleGeneratePipeline(event) {
     const notesRes = await createWorkingNotesFromTranscript({
       settings, title: resolvedTitle, language, transcriptText, metadata: { episode_url: episodeUrl }
     });
-    currentStageAcc = currentStageAcc.concat(notesRes.stages || []);
-    renderInspector(currentStageAcc);
+    latestStepStages.notes = notesRes.stages || [];
     renderWorkingNotes(notesRes.working_notes);
     setStepState("notes", "completed");
     updateProgress("处理中", "Working Notes 完成", 25);
@@ -698,8 +758,7 @@ async function handleGeneratePipeline(event) {
     const outlineRes = await createBookletOutlineFromWorkingNotes({
       settings, title: resolvedTitle, language, workingNotes: latestWorkingNotes, metadata: { episode_url: episodeUrl }
     });
-    currentStageAcc = currentStageAcc.concat(outlineRes.stages || []);
-    renderInspector(currentStageAcc);
+    latestStepStages.outline = outlineRes.stages || [];
     renderBookletOutline(outlineRes.booklet_outline);
     setStepState("outline", "completed");
     updateProgress("处理中", "Outline 完成", 50);
@@ -710,8 +769,7 @@ async function handleGeneratePipeline(event) {
     const draftRes = await createBookletDraftFromOutline({
       settings, title: resolvedTitle, language, workingNotes: latestWorkingNotes, bookletOutline: latestBookletOutline, metadata: { episode_url: episodeUrl }
     });
-    currentStageAcc = currentStageAcc.concat(draftRes.stages || []);
-    renderInspector(currentStageAcc);
+    latestStepStages.draft = draftRes.stages || [];
     renderBookletDraft(draftRes.booklet_draft);
     setStepState("draft", "completed");
     updateProgress("处理中", "Draft 完成", 75);
@@ -724,8 +782,7 @@ async function handleGeneratePipeline(event) {
     });
     const objectUrl = URL.createObjectURL(epubRes.blob);
     epubRes.artifacts[0].download_url = objectUrl;
-    currentStageAcc = currentStageAcc.concat(epubRes.stages || []);
-    renderInspector(currentStageAcc);
+    latestStepStages.epub = epubRes.stages || [];
     renderArtifacts(epubRes);
     
     latestArtifactSummary = {
@@ -827,7 +884,7 @@ async function persistWorkspace() {
     workingNotes: latestWorkingNotes,
     bookletOutline: latestBookletOutline,
     bookletDraft: latestBookletDraft,
-    stages: latestStages,
+    stepStages: latestStepStages,
     artifactSummary: latestArtifactSummary,
     savedAt: new Date().toISOString(),
   };
@@ -849,7 +906,7 @@ async function loadWorkspace() {
   elements.episodeUrl.value = ws.episodeUrl || "";
   elements.transcriptText.value = ws.transcriptText || "";
 
-  renderInspector(ws.stages || []);
+  if (ws.stepStages) latestStepStages = ws.stepStages;
   if (ws.workingNotes) renderWorkingNotes(ws.workingNotes);
   if (ws.bookletOutline) renderBookletOutline(ws.bookletOutline);
   if (ws.bookletDraft) renderBookletDraft(ws.bookletDraft);
@@ -894,7 +951,11 @@ async function init() {
   elements.btns.viewNotes.addEventListener("click", () => openModal("modal-notes"));
   elements.btns.viewOutline.addEventListener("click", () => openModal("modal-outline"));
   elements.btns.viewDraft.addEventListener("click", () => openModal("modal-draft"));
-  
+
+  for (const [stepKey, btn] of Object.entries(elements.processBtns)) {
+    btn.addEventListener("click", () => { renderProcessView(stepKey); openModal("modal-process"); });
+  }
+
   elements.closeModalBtns.forEach(btn => {
     btn.addEventListener("click", () => {
       const target = btn.getAttribute("data-target");
