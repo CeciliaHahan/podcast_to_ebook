@@ -39,7 +39,8 @@
           <div class="primary-actions">
             <button id="generate-working-notes" type="button" class="ghost">先看 Working Notes</button>
             <button id="generate-booklet-outline" type="button" class="ghost">继续生成 Outline</button>
-            <button id="submit-job" type="submit">开始生成 EPUB</button>
+            <button id="generate-booklet-draft" type="button" class="ghost">继续生成 Draft</button>
+            <button id="submit-job" type="submit">导出 EPUB</button>
           </div>
         </form>
       </section>
@@ -97,6 +98,20 @@
         <div id="booklet-outline-panel" hidden>
           <h3 id="booklet-outline-title"></h3>
           <ol id="booklet-outline-sections"></ol>
+        </div>
+      </section>
+
+      <section class="card booklet-draft">
+        <h2>Booklet Draft</h2>
+        <div class="draft-explainer">
+          <p><strong>这是什么：</strong>把 Outline 真正写成一版可阅读的正文草稿。</p>
+          <p><strong>有什么用：</strong>先看结构和行文是否顺，再决定要不要继续细修或直接导出 EPUB。</p>
+          <p><strong>你现在要看什么：</strong>标题是否自然、每章有没有真的写开、章节之间是否衔接。</p>
+        </div>
+        <div id="booklet-draft-empty" class="empty-state">还没有生成 Booklet Draft。</div>
+        <div id="booklet-draft-panel" hidden>
+          <h3 id="booklet-draft-title"></h3>
+          <div id="booklet-draft-sections"></div>
         </div>
       </section>
 

@@ -17,6 +17,7 @@ const elements = {
   transcriptText: document.getElementById("transcript-text"),
   generateWorkingNotes: document.getElementById("generate-working-notes"),
   generateBookletOutline: document.getElementById("generate-booklet-outline"),
+  generateBookletDraft: document.getElementById("generate-booklet-draft"),
   submitJob: document.getElementById("submit-job"),
   jobId: document.getElementById("job-id"),
   jobStatus: document.getElementById("job-status"),
@@ -33,11 +34,17 @@ const elements = {
   bookletOutlinePanel: document.getElementById("booklet-outline-panel"),
   bookletOutlineTitle: document.getElementById("booklet-outline-title"),
   bookletOutlineSections: document.getElementById("booklet-outline-sections"),
+  bookletDraftEmpty: document.getElementById("booklet-draft-empty"),
+  bookletDraftPanel: document.getElementById("booklet-draft-panel"),
+  bookletDraftTitle: document.getElementById("booklet-draft-title"),
+  bookletDraftSections: document.getElementById("booklet-draft-sections"),
   eventsList: document.getElementById("events-list"),
 };
 
 let didAutoSwitchBaseUrl = false;
 let latestWorkingNotes = null;
+let latestBookletOutline = null;
+let latestBookletDraft = null;
 const STATUS_LABELS = {
   idle: "待命",
   queued: "排队中",
@@ -248,6 +255,7 @@ function renderWorkingNotes(data) {
 }
 
 function clearBookletOutline() {
+  latestBookletOutline = null;
   elements.bookletOutlineTitle.textContent = "";
   elements.bookletOutlineSections.innerHTML = "";
   elements.bookletOutlineEmpty.hidden = false;
@@ -256,6 +264,7 @@ function clearBookletOutline() {
 
 function renderBookletOutline(data) {
   const outline = data?.booklet_outline;
+  latestBookletOutline = outline || null;
   elements.bookletOutlineSections.innerHTML = "";
   if (!outline?.sections?.length) {
     clearBookletOutline();
@@ -283,6 +292,49 @@ function renderBookletOutline(data) {
 
   elements.bookletOutlineEmpty.hidden = true;
   elements.bookletOutlinePanel.hidden = false;
+}
+
+function clearBookletDraft() {
+  latestBookletDraft = null;
+  elements.bookletDraftTitle.textContent = "";
+  elements.bookletDraftSections.innerHTML = "";
+  elements.bookletDraftEmpty.hidden = false;
+  elements.bookletDraftPanel.hidden = true;
+}
+
+function renderBookletDraft(data) {
+  const draft = data?.booklet_draft;
+  latestBookletDraft = draft || null;
+  elements.bookletDraftSections.innerHTML = "";
+  if (!draft?.sections?.length) {
+    clearBookletDraft();
+    return;
+  }
+
+  elements.bookletDraftTitle.textContent = draft.title || "未命名 Draft";
+  for (const section of draft.sections) {
+    const article = document.createElement("article");
+    article.className = "draft-section";
+
+    const heading = document.createElement("h4");
+    heading.textContent = section.heading;
+    article.appendChild(heading);
+
+    const paragraphs = String(section.body || "")
+      .split(/\n{2,}/)
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    for (const paragraph of paragraphs) {
+      const p = document.createElement("p");
+      p.textContent = paragraph;
+      article.appendChild(p);
+    }
+
+    elements.bookletDraftSections.appendChild(article);
+  }
+
+  elements.bookletDraftEmpty.hidden = true;
+  elements.bookletDraftPanel.hidden = false;
 }
 
 function renderInspector(data) {
@@ -462,23 +514,26 @@ async function handleCreateJob(event) {
   event.preventDefault();
   clearError();
   elements.submitJob.disabled = true;
-  elements.submitJob.textContent = "提交中...";
+  elements.submitJob.textContent = "导出中...";
   try {
     await saveSettings();
+    if (!latestBookletDraft?.sections?.length) {
+      throw new Error("请先生成 Booklet Draft。");
+    }
 
-    const resolvedTitle = elements.title.value.trim() || autoGenerateTitle(elements.transcriptText.value);
+    const resolvedTitle = elements.title.value.trim() || latestBookletDraft.title || autoGenerateTitle(elements.transcriptText.value);
     elements.title.value = resolvedTitle;
 
     const payload = {
       title: resolvedTitle,
       language: elements.language.value.trim(),
-      transcript_text: elements.transcriptText.value,
+      booklet_draft: latestBookletDraft,
       metadata: {
         episode_url: elements.episodeUrl.value.trim() || undefined,
       },
     };
 
-    const created = await apiRequest("/v1/epub/from-transcript", "POST", payload);
+    const created = await apiRequest("/v1/epub/from-booklet-draft", "POST", payload);
     const createSucceeded = created.status === "succeeded";
     if (!createSucceeded) {
       throw new Error(`生成未成功返回，status=${created.status || "unknown"}`);
@@ -503,7 +558,7 @@ async function handleCreateJob(event) {
     renderError(error instanceof Error ? error.message : "提交任务失败");
   } finally {
     elements.submitJob.disabled = false;
-    elements.submitJob.textContent = "开始生成 EPUB";
+    elements.submitJob.textContent = "导出 EPUB";
   }
 }
 
@@ -533,7 +588,9 @@ async function handleGenerateWorkingNotes() {
       progress: 100,
       stage: "completed",
     });
+    elements.artifactsList.innerHTML = "<li>尚未导出 EPUB。</li>";
     clearBookletOutline();
+    clearBookletDraft();
     renderWorkingNotes(created);
     if (Array.isArray(created.stages) && created.stages.length > 0) {
       renderInspector({ stages: created.stages });
@@ -577,6 +634,8 @@ async function handleGenerateBookletOutline() {
       progress: 100,
       stage: "completed",
     });
+    elements.artifactsList.innerHTML = "<li>尚未导出 EPUB。</li>";
+    clearBookletDraft();
     renderBookletOutline(created);
     if (Array.isArray(created.stages) && created.stages.length > 0) {
       renderInspector({ stages: created.stages });
@@ -588,6 +647,55 @@ async function handleGenerateBookletOutline() {
   } finally {
     elements.generateBookletOutline.disabled = false;
     elements.generateBookletOutline.textContent = "继续生成 Outline";
+  }
+}
+
+async function handleGenerateBookletDraft() {
+  clearError();
+  elements.generateBookletDraft.disabled = true;
+  elements.generateBookletDraft.textContent = "生成中...";
+  try {
+    await saveSettings();
+    if (!latestWorkingNotes?.sections?.length) {
+      throw new Error("请先生成 Working Notes。");
+    }
+    if (!latestBookletOutline?.sections?.length) {
+      throw new Error("请先生成 Booklet Outline。");
+    }
+
+    const resolvedTitle =
+      elements.title.value.trim() || latestBookletOutline.title || latestWorkingNotes.title || autoGenerateTitle(elements.transcriptText.value);
+    elements.title.value = resolvedTitle;
+
+    const payload = {
+      title: resolvedTitle,
+      language: elements.language.value.trim(),
+      working_notes: latestWorkingNotes,
+      booklet_outline: latestBookletOutline,
+      metadata: {
+        episode_url: elements.episodeUrl.value.trim() || undefined,
+      },
+    };
+
+    const created = await apiRequest("/v1/booklet-draft/from-booklet-outline", "POST", payload);
+    renderStatus({
+      job_id: created.job_id,
+      status: created.status,
+      progress: 100,
+      stage: "completed",
+    });
+    elements.artifactsList.innerHTML = "<li>尚未导出 EPUB。</li>";
+    renderBookletDraft(created);
+    if (Array.isArray(created.stages) && created.stages.length > 0) {
+      renderInspector({ stages: created.stages });
+    } else {
+      elements.eventsList.innerHTML = "<li>未返回调试阶段信息。</li>";
+    }
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : "Booklet Draft 生成失败");
+  } finally {
+    elements.generateBookletDraft.disabled = false;
+    elements.generateBookletDraft.textContent = "继续生成 Draft";
   }
 }
 
@@ -617,6 +725,7 @@ async function init() {
   elements.loadSample.addEventListener("click", loadSample);
   elements.generateWorkingNotes.addEventListener("click", handleGenerateWorkingNotes);
   elements.generateBookletOutline.addEventListener("click", handleGenerateBookletOutline);
+  elements.generateBookletDraft.addEventListener("click", handleGenerateBookletDraft);
   await loadSettings();
 }
 
