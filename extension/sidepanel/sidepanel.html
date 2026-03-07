@@ -51,6 +51,17 @@
           <button id="reset-pipeline" type="button" class="ghost small">返回修改</button>
         </div>
 
+        <div class="status-card">
+          <div class="status-grid">
+            <p><strong>状态：</strong> <span id="job-status">待命</span></p>
+            <p><strong>阶段：</strong> <span id="job-stage">-</span></p>
+            <p><strong>进度：</strong> <span id="job-progress">0%</span></p>
+          </div>
+          <div class="meter">
+            <div id="meter-fill"></div>
+          </div>
+        </div>
+
         <div class="stepper">
           <!-- Step 1 -->
           <div class="step" id="step-notes">

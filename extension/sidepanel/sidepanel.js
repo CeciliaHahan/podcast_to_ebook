@@ -31,6 +31,12 @@ const elements = {
   // Pipeline Actions
   resetPipeline: document.getElementById("reset-pipeline"),
   
+  // Status Elements
+  jobStatus: document.getElementById("job-status"),
+  jobStage: document.getElementById("job-stage"),
+  jobProgress: document.getElementById("job-progress"),
+  meterFill: document.getElementById("meter-fill"),
+  
   // Steps Elements
   steps: {
     notes: document.getElementById("step-notes"),
@@ -202,6 +208,13 @@ function revokeArtifactUrls() {
 // -----------------------------------------------------------------------------
 // UI Renderers
 // -----------------------------------------------------------------------------
+
+function updateProgress(status, stage, percentage) {
+  if (elements.jobStatus) elements.jobStatus.textContent = status;
+  if (elements.jobStage) elements.jobStage.textContent = stage;
+  if (elements.jobProgress) elements.jobProgress.textContent = `${percentage}%`;
+  if (elements.meterFill) elements.meterFill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
+}
 
 function setStepState(stepKey, state, statusText) {
   const stepEl = elements.steps[stepKey];
@@ -380,6 +393,7 @@ function resetPipelineUI() {
   setStepState("draft", "", "等待中");
   setStepState("epub", "", "等待中");
   elements.epubContainer.innerHTML = "";
+  updateProgress("待命", "-", 0);
   clearError();
   latestWorkingNotes = null;
   latestBookletOutline = null;
@@ -411,6 +425,7 @@ async function handleGeneratePipeline(event) {
 
     // STEP 1: Working Notes
     setStepState("notes", "active", "生成大纲底稿中 (约需1-2分钟)...");
+    updateProgress("处理中", "模型请求 (1/3)", 10);
     const notesRes = await createWorkingNotesFromTranscript({
       settings, title: resolvedTitle, language, transcriptText, metadata: { episode_url: episodeUrl }
     });
@@ -418,9 +433,11 @@ async function handleGeneratePipeline(event) {
     renderInspector(currentStageAcc);
     renderWorkingNotes(notesRes.working_notes);
     setStepState("notes", "completed");
+    updateProgress("处理中", "Working Notes 完成", 25);
     
     // STEP 2: Booklet Outline
     setStepState("outline", "active", "整理章节结构中...");
+    updateProgress("处理中", "模型请求 (2/3)", 35);
     const outlineRes = await createBookletOutlineFromWorkingNotes({
       settings, title: resolvedTitle, language, workingNotes: latestWorkingNotes, metadata: { episode_url: episodeUrl }
     });
@@ -428,9 +445,11 @@ async function handleGeneratePipeline(event) {
     renderInspector(currentStageAcc);
     renderBookletOutline(outlineRes.booklet_outline);
     setStepState("outline", "completed");
+    updateProgress("处理中", "Outline 完成", 50);
 
     // STEP 3: Booklet Draft
     setStepState("draft", "active", "撰写正文中 (约需2-3分钟)...");
+    updateProgress("处理中", "模型请求 (3/3)", 60);
     const draftRes = await createBookletDraftFromOutline({
       settings, title: resolvedTitle, language, workingNotes: latestWorkingNotes, bookletOutline: latestBookletOutline, metadata: { episode_url: episodeUrl }
     });
@@ -438,9 +457,11 @@ async function handleGeneratePipeline(event) {
     renderInspector(currentStageAcc);
     renderBookletDraft(draftRes.booklet_draft);
     setStepState("draft", "completed");
+    updateProgress("处理中", "Draft 完成", 75);
 
     // STEP 4: Export EPUB
     setStepState("epub", "active", "打包 EPUB 文件中...");
+    updateProgress("处理中", "EPUB 渲染", 90);
     const epubRes = await createEpubFromBookletDraft({
       title: resolvedTitle, language, bookletDraft: latestBookletDraft, metadata: { episode_url: episodeUrl }
     });
@@ -457,12 +478,14 @@ async function handleGeneratePipeline(event) {
       download_url: objectUrl
     };
     setStepState("epub", "completed", "导出成功");
+    updateProgress("已完成", "完成", 100);
 
     await persistWorkspace();
 
   } catch (error) {
     console.error(error);
     renderError(error instanceof Error ? error.message : "流水线执行失败");
+    updateProgress("失败", "遇到错误", 0);
     // Find the first non-completed step and mark it error
     ["notes", "outline", "draft", "epub"].find(step => {
       const el = elements.steps[step];
@@ -547,6 +570,7 @@ async function loadWorkspace() {
     latestArtifactSummary = ws.artifactSummary;
     // We can't fully restore the Blob URL easily across sessions, but we show the flow as completed.
     switchView("pipeline");
+    updateProgress("已完成", "完成", 100);
     setStepState("notes", "completed");
     setStepState("outline", "completed");
     setStepState("draft", "completed");
