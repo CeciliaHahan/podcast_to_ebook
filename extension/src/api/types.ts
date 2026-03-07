@@ -34,6 +34,49 @@ export type CreateEpubFromTranscriptRequest = {
   metadata?: Record<string, unknown>;
 };
 
+export type WorkingNotes = {
+  title: string;
+  summary: string[];
+  sections: Array<{
+    heading: string;
+    bullets: string[];
+    excerpts: string[];
+  }>;
+};
+
+export type BookletOutline = {
+  title: string;
+  sections: Array<{
+    id: string;
+    heading: string;
+    goal?: string;
+  }>;
+};
+
+export type BookletDraft = {
+  title: string;
+  sections: Array<{
+    id: string;
+    heading: string;
+    body: string;
+  }>;
+};
+
+export type CreateBookletDraftRequest = {
+  title: string;
+  language: string;
+  working_notes: WorkingNotes;
+  booklet_outline: BookletOutline;
+  metadata?: Record<string, unknown>;
+};
+
+export type CreateEpubFromBookletDraftRequest = {
+  title: string;
+  language: string;
+  booklet_draft: BookletDraft;
+  metadata?: Record<string, unknown>;
+};
+
 export type ApiErrorEnvelope = {
   error: {
     code: string;
