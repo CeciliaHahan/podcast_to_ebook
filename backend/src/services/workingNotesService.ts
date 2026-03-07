@@ -22,6 +22,15 @@ export type BookletOutline = {
   }>;
 };
 
+export type BookletDraft = {
+  title: string;
+  sections: Array<{
+    id: string;
+    heading: string;
+    body: string;
+  }>;
+};
+
 function extractFirstJsonObject(input: string): string | null {
   let depth = 0;
   let start = -1;
@@ -65,6 +74,18 @@ function cleanLine(input: unknown, maxLength = 180): string {
     return "";
   }
   return input.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function cleanBodyText(input: unknown, maxLength = 4000): string {
+  if (typeof input !== "string") {
+    return "";
+  }
+  const text = input
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return text.slice(0, maxLength);
 }
 
 function readStringList(input: unknown, maxItems: number, maxItemLength: number): string[] {
@@ -158,6 +179,39 @@ function readBookletOutlineFromUnknown(input: unknown, fallbackTitle: string): B
   };
 }
 
+function readBookletDraftFromUnknown(input: unknown, fallbackTitle: string): BookletDraft | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const root = input as Record<string, unknown>;
+  const sectionsRaw = Array.isArray(root.sections) ? root.sections : [];
+  const sections: BookletDraft["sections"] = [];
+
+  for (let index = 0; index < sectionsRaw.length && index < 8; index += 1) {
+    const item = sectionsRaw[index];
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = cleanLine(record.id, 40) || `section_${index + 1}`;
+    const heading = cleanLine(record.heading, 60);
+    const body = cleanBodyText(record.body, 4000);
+    if (!heading || !body) {
+      continue;
+    }
+    sections.push({ id, heading, body });
+  }
+
+  if (!sections.length) {
+    return null;
+  }
+
+  return {
+    title: cleanLine(root.title, 120) || fallbackTitle,
+    sections,
+  };
+}
+
 function buildPrompt(params: { title: string; language: string; transcriptText: string }) {
   return [
     "任务：把 transcript 转成用于后续生成 booklet 的 working notes。",
@@ -213,6 +267,42 @@ function buildOutlinePrompt(params: { title: string; language: string; workingNo
     `上下文：title=${params.title}; language=${params.language}`,
     "working notes:",
     JSON.stringify(params.workingNotes, null, 2),
+  ].join("\n");
+}
+
+function buildDraftPrompt(params: {
+  title: string;
+  language: string;
+  workingNotes: WorkingNotes;
+  bookletOutline: BookletOutline;
+}) {
+  return [
+    "任务：把 booklet outline 写成一个可阅读的 booklet draft。",
+    "只输出一个 JSON 对象，不要 markdown，不要解释，不要额外文字。",
+    "目标：先产出一版可读正文，后面再决定是否继续润色。",
+    "严格要求：",
+    "1) 只能使用传入的 working notes 和 booklet outline，不得使用外部知识。",
+    "2) sections 顺序必须和 outline 一致。",
+    "3) 每段必须保留 outline 里的 id 和 heading。",
+    "4) body 写成自然、清楚、简洁的正文，不要写成要点列表。",
+    "5) body 尽量用 working notes 里的 bullets 和 excerpts 作为依据，不要发明新事实。",
+    "6) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。",
+    "JSON schema:",
+    `{
+  "title": string,
+  "sections": [
+    {
+      "id": string,
+      "heading": string,
+      "body": string
+    }
+  ]
+}`,
+    `上下文：title=${params.title}; language=${params.language}`,
+    "working notes:",
+    JSON.stringify(params.workingNotes, null, 2),
+    "booklet outline:",
+    JSON.stringify(params.bookletOutline, null, 2),
   ].join("\n");
 }
 
@@ -480,6 +570,140 @@ export async function createBookletOutlineFromWorkingNotes(params: {
     }
     const message = error instanceof Error ? error.message : "Unknown booklet outline error";
     throw new ApiError(502, "BOOKLET_OUTLINE_FAILED", message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function createBookletDraftFromOutline(params: {
+  title: string;
+  language: string;
+  workingNotes: WorkingNotes;
+  bookletOutline: BookletOutline;
+  metadata?: Record<string, unknown>;
+}) {
+  if (!config.llmApiKey) {
+    throw new ApiError(503, "LLM_UNAVAILABLE", "LLM API key is not configured.");
+  }
+
+  const jobId = createId("draft");
+  const createdAt = new Date().toISOString();
+  const sourceRef = typeof params.metadata?.episode_url === "string" ? params.metadata.episode_url : undefined;
+  const stages: InspectorStageRecord[] = [];
+  const pushStage = (stage: InspectorPushInput) => {
+    stages.push({
+      ...stage,
+      ts: new Date().toISOString(),
+    });
+  };
+
+  pushStage({
+    stage: "normalization",
+    input: {
+      source_type: "booklet_outline",
+      source_ref: sourceRef ?? null,
+      outline_section_count: params.bookletOutline.sections.length,
+      notes_section_count: params.workingNotes.sections.length,
+      outline_preview: JSON.stringify(params.bookletOutline, null, 2).slice(0, 2500),
+      working_notes_preview: JSON.stringify(params.workingNotes, null, 2).slice(0, 2500),
+    },
+    config: {
+      flow: "booklet_outline_to_booklet_draft",
+      one_pass: true,
+    },
+  });
+
+  const prompt = buildDraftPrompt({
+    title: params.title,
+    language: params.language,
+    workingNotes: params.workingNotes,
+    bookletOutline: params.bookletOutline,
+  });
+  const endpoint = `${config.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.llmTimeoutMs);
+
+  try {
+    pushStage({
+      stage: "llm_request",
+      config: {
+        endpoint,
+        model: config.llmModel,
+        temperature: 0.3,
+        response_format: "json_object",
+      },
+      input: {
+        prompt_preview: prompt.slice(0, 5000),
+      },
+    });
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.llmApiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.llmModel,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是 booklet draft 生成器。你的任务是把 working notes 和 booklet outline 写成 title + sections(body) 的 JSON。不得输出 schema 之外的内容。",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    const jsonCandidate = typeof content === "string" ? extractFirstJsonObject(content) : null;
+    const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
+    const bookletDraft = readBookletDraftFromUnknown(parsed, params.title);
+
+    pushStage({
+      stage: "llm_response",
+      output: {
+        http_status: response.status,
+        parse_ok: Boolean(bookletDraft),
+        raw_content_preview: typeof content === "string" ? content.slice(0, 3000) : null,
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(502, "LLM_HTTP_ERROR", `Booklet draft generation failed with HTTP ${response.status}.`);
+    }
+    if (!bookletDraft) {
+      throw new ApiError(502, "BOOKLET_DRAFT_PARSE_FAILED", "Failed to parse booklet draft response.");
+    }
+
+    return {
+      job_id: jobId,
+      status: "succeeded" as const,
+      created_at: createdAt,
+      booklet_draft: bookletDraft,
+      stages,
+      traceability: {
+        source_type: "booklet_outline" as const,
+        source_ref: sourceRef ?? "internal://source-ref",
+        generated_at: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "Unknown booklet draft error";
+    throw new ApiError(502, "BOOKLET_DRAFT_FAILED", message);
   } finally {
     clearTimeout(timeout);
   }

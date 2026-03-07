@@ -72,7 +72,8 @@ export type InspectorStageName =
   | "llm_request"
   | "llm_response"
   | "normalization"
-  | "pdf";
+  | "pdf"
+  | "epub";
 
 export type InspectorStageRecord = {
   stage: InspectorStageName;
