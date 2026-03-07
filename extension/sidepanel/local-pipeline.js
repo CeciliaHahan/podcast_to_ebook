@@ -14,6 +14,7 @@ export const DEFAULT_LLM_SETTINGS = {
   llmBaseUrl: "https://openrouter.ai/api/v1",
   llmModel: "google/gemini-3-flash-preview",
   llmApiKey: _localApiKey,
+  reasoningEffort: "medium",
 };
 
 export const LLM_INPUT_MAX_CHARS = 80_000;
@@ -23,6 +24,7 @@ const OPENROUTER_HEADERS = {
   "X-Title": "Podcasts to Ebooks",
 };
 const SUPPORTED_LLM_HOSTS = new Set(["openrouter.ai", "api.openai.com"]);
+const OPENROUTER_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 function createLocalId(prefix) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
@@ -220,6 +222,11 @@ function normalizeBaseUrl(input) {
   return baseUrl;
 }
 
+function normalizeReasoningEffort(input) {
+  const normalized = String(input || DEFAULT_LLM_SETTINGS.reasoningEffort).trim().toLowerCase();
+  return OPENROUTER_REASONING_EFFORTS.has(normalized) ? normalized : DEFAULT_LLM_SETTINGS.reasoningEffort;
+}
+
 async function readJsonResponse(response) {
   try {
     return await response.json();
@@ -245,6 +252,25 @@ async function callJsonChatCompletion(params) {
   if (baseUrl.includes("openrouter.ai")) {
     Object.assign(headers, OPENROUTER_HEADERS);
   }
+  const reasoningEffort = normalizeReasoningEffort(params.settings?.reasoningEffort);
+  const requestBody = {
+    model: params.settings.llmModel,
+    temperature: params.temperature,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: params.systemPrompt,
+      },
+      {
+        role: "user",
+        content: params.prompt,
+      },
+    ],
+  };
+  if (baseUrl.includes("openrouter.ai")) {
+    requestBody.reasoning = { effort: reasoningEffort };
+  }
 
   try {
     params.pushStage({
@@ -254,6 +280,7 @@ async function callJsonChatCompletion(params) {
         model: params.settings.llmModel,
         temperature: params.temperature,
         response_format: "json_object",
+        reasoning: baseUrl.includes("openrouter.ai") ? { effort: reasoningEffort } : null,
       },
       input: {
         prompt_preview: params.prompt.slice(0, 5_000),
@@ -264,21 +291,7 @@ async function callJsonChatCompletion(params) {
       method: "POST",
       signal: controller.signal,
       headers,
-      body: JSON.stringify({
-        model: params.settings.llmModel,
-        temperature: params.temperature,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: params.systemPrompt,
-          },
-          {
-            role: "user",
-            content: params.prompt,
-          },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const payload = await readJsonResponse(response);

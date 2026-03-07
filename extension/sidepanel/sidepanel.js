@@ -12,6 +12,7 @@ const SETTINGS_KEY = "pte_settings_v2";
 const WORKSPACE_KEY = "pte_workspace_v1";
 const HISTORY_KEY = "pte_history_v1";
 const HISTORY_MAX_ENTRIES = 100;
+const REASONING_EFFORT_VALUES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 const elements = {
   // Views
@@ -23,6 +24,7 @@ const elements = {
   llmApiKey: document.getElementById("llm-api-key"),
   llmModel: document.getElementById("llm-model"),
   llmTemperature: document.getElementById("llm-temperature"),
+  llmReasoningEffort: document.getElementById("llm-reasoning-effort"),
   saveSettings: document.getElementById("save-settings"),
   loadSample: document.getElementById("load-sample"),
   settingsFeedback: document.getElementById("settings-feedback"),
@@ -211,6 +213,11 @@ function toJsonPreview(value, maxChars = 2000) {
 function localizeStage(stage) {
   const key = String(stage || "").trim().toLowerCase();
   return STAGE_LABELS[key] || stage || "-";
+}
+
+function normalizeReasoningEffort(value) {
+  const normalized = String(value || DEFAULT_LLM_SETTINGS.reasoningEffort).trim().toLowerCase();
+  return REASONING_EFFORT_VALUES.has(normalized) ? normalized : DEFAULT_LLM_SETTINGS.reasoningEffort;
 }
 
 function renderError(message) {
@@ -761,11 +768,16 @@ function getStorageArea() {
 
 async function getSettings() {
   const stored = await getStorageArea().get([SETTINGS_KEY]);
-  const settings = stored[SETTINGS_KEY] || { ...DEFAULT_LLM_SETTINGS };
-  if (!settings.prompts) {
-    settings.prompts = { ...DEFAULT_PROMPTS };
-  }
-  return settings;
+  const saved = stored[SETTINGS_KEY] || {};
+  return {
+    ...DEFAULT_LLM_SETTINGS,
+    ...saved,
+    reasoningEffort: normalizeReasoningEffort(saved.reasoningEffort),
+    prompts: {
+      ...DEFAULT_PROMPTS,
+      ...(saved.prompts || {}),
+    },
+  };
 }
 
 async function loadSettings() {
@@ -776,6 +788,7 @@ async function loadSettings() {
   if (settings.temperature !== undefined) {
     elements.llmTemperature.value = settings.temperature;
   }
+  elements.llmReasoningEffort.value = normalizeReasoningEffort(settings.reasoningEffort);
   
   elements.prompts.wnSystem.value = settings.prompts.wnSystem;
   elements.prompts.wnUser.value = settings.prompts.wnUser;
@@ -791,6 +804,7 @@ async function saveSettings() {
     llmApiKey: String(elements.llmApiKey.value || "").trim(),
     llmModel: String(elements.llmModel.value || DEFAULT_LLM_SETTINGS.llmModel).trim() || DEFAULT_LLM_SETTINGS.llmModel,
     temperature: elements.llmTemperature.value ? Number(elements.llmTemperature.value) : undefined,
+    reasoningEffort: normalizeReasoningEffort(elements.llmReasoningEffort.value),
     prompts: {
       wnSystem: elements.prompts.wnSystem.value,
       wnUser: elements.prompts.wnUser.value,

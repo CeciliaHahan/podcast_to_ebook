@@ -259,7 +259,19 @@
             <label>
               Temperature
               <input id="llm-temperature" type="number" step="0.1" min="0" max="2" placeholder="0.2" />
-              <span class="micro-hint">控制输出的随机性（0.0最确定，2.0最发散）。留空则使用默认值。</span>
+              <span class="micro-hint">控制输出的随机性（0.0最确定，2.0最发散）。</span>
+            </label>
+            <label>
+              Reasoning Effort
+              <select id="llm-reasoning-effort">
+                <option value="none">none</option>
+                <option value="minimal">minimal</option>
+                <option value="low">low</option>
+                <option value="medium" selected>medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+              </select>
+              <span class="micro-hint">OpenRouter 推理强度。默认 medium，更稳妥；越高通常越贵也越慢。</span>
             </label>
           </div>
         </details>
