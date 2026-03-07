@@ -4,7 +4,7 @@ import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
 import { config } from "../config.js";
 import { createEpubFromTranscriptInline } from "../services/epubInlineService.js";
-import { createWorkingNotesFromTranscript } from "../services/workingNotesService.js";
+import { createBookletOutlineFromWorkingNotes, createWorkingNotesFromTranscript } from "../services/workingNotesService.js";
 
 const router = Router();
 
@@ -27,6 +27,28 @@ const workingNotesTranscriptRequestSchema = z.object({
   title: z.string().trim().min(1).max(300),
   language: z.string().min(1),
   transcript_text: z.string().min(10).max(config.llmInputMaxChars),
+  metadata: z.record(z.unknown()).optional(),
+  compliance_declaration: complianceSchema,
+});
+
+const workingNotesSchema = z.object({
+  title: z.string().min(1),
+  summary: z.array(z.string().min(1)).min(1),
+  sections: z
+    .array(
+      z.object({
+        heading: z.string().min(1),
+        bullets: z.array(z.string().min(1)).min(1),
+        excerpts: z.array(z.string().min(1)).min(1),
+      }),
+    )
+    .min(1),
+});
+
+const bookletOutlineRequestSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  language: z.string().min(1),
+  working_notes: workingNotesSchema,
   metadata: z.record(z.unknown()).optional(),
   compliance_declaration: complianceSchema,
 });
@@ -66,7 +88,21 @@ const createWorkingNotesFromTranscriptRoute = asyncHandler(async (req: Request, 
   res.status(200).json(response);
 });
 
+const createBookletOutlineRoute = asyncHandler(async (req: Request, res) => {
+  getUser(req);
+  const parsed = bookletOutlineRequestSchema.parse(req.body);
+  const response = await createBookletOutlineFromWorkingNotes({
+    title: parsed.title,
+    language: parsed.language,
+    workingNotes: parsed.working_notes,
+    metadata: parsed.metadata,
+    compliance: parsed.compliance_declaration,
+  });
+  res.status(200).json(response);
+});
+
 router.post("/epub/from-transcript", createEpubFromTranscriptRoute);
 router.post("/working-notes/from-transcript", createWorkingNotesFromTranscriptRoute);
+router.post("/booklet-outline/from-working-notes", createBookletOutlineRoute);
 
 export { router as v1Router };

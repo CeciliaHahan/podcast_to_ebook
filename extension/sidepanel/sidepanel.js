@@ -18,6 +18,7 @@ const elements = {
   checkPersonal: document.getElementById("check-personal"),
   checkNonCommercial: document.getElementById("check-noncommercial"),
   generateWorkingNotes: document.getElementById("generate-working-notes"),
+  generateBookletOutline: document.getElementById("generate-booklet-outline"),
   submitJob: document.getElementById("submit-job"),
   jobId: document.getElementById("job-id"),
   jobStatus: document.getElementById("job-status"),
@@ -30,10 +31,15 @@ const elements = {
   workingNotesPanel: document.getElementById("working-notes-panel"),
   workingNotesSummary: document.getElementById("working-notes-summary"),
   workingNotesSections: document.getElementById("working-notes-sections"),
+  bookletOutlineEmpty: document.getElementById("booklet-outline-empty"),
+  bookletOutlinePanel: document.getElementById("booklet-outline-panel"),
+  bookletOutlineTitle: document.getElementById("booklet-outline-title"),
+  bookletOutlineSections: document.getElementById("booklet-outline-sections"),
   eventsList: document.getElementById("events-list"),
 };
 
 let didAutoSwitchBaseUrl = false;
+let latestWorkingNotes = null;
 const STATUS_LABELS = {
   idle: "待命",
   queued: "排队中",
@@ -196,6 +202,7 @@ function renderArtifacts(data) {
 
 function renderWorkingNotes(data) {
   const notes = data?.working_notes;
+  latestWorkingNotes = notes || null;
   elements.workingNotesSummary.innerHTML = "";
   elements.workingNotesSections.innerHTML = "";
   if (!notes?.summary?.length || !notes?.sections?.length) {
@@ -240,6 +247,44 @@ function renderWorkingNotes(data) {
 
   elements.workingNotesEmpty.hidden = true;
   elements.workingNotesPanel.hidden = false;
+}
+
+function clearBookletOutline() {
+  elements.bookletOutlineTitle.textContent = "";
+  elements.bookletOutlineSections.innerHTML = "";
+  elements.bookletOutlineEmpty.hidden = false;
+  elements.bookletOutlinePanel.hidden = true;
+}
+
+function renderBookletOutline(data) {
+  const outline = data?.booklet_outline;
+  elements.bookletOutlineSections.innerHTML = "";
+  if (!outline?.sections?.length) {
+    clearBookletOutline();
+    return;
+  }
+
+  elements.bookletOutlineTitle.textContent = outline.title || "未命名 Outline";
+  for (const section of outline.sections) {
+    const li = document.createElement("li");
+    li.className = "outline-section";
+
+    const heading = document.createElement("strong");
+    heading.textContent = section.heading;
+    li.appendChild(heading);
+
+    if (section.goal) {
+      const goal = document.createElement("p");
+      goal.className = "outline-goal";
+      goal.textContent = section.goal;
+      li.appendChild(goal);
+    }
+
+    elements.bookletOutlineSections.appendChild(li);
+  }
+
+  elements.bookletOutlineEmpty.hidden = true;
+  elements.bookletOutlinePanel.hidden = false;
 }
 
 function renderInspector(data) {
@@ -504,6 +549,7 @@ async function handleGenerateWorkingNotes() {
       progress: 100,
       stage: "completed",
     });
+    clearBookletOutline();
     renderWorkingNotes(created);
     if (Array.isArray(created.stages) && created.stages.length > 0) {
       renderInspector({ stages: created.stages });
@@ -515,6 +561,56 @@ async function handleGenerateWorkingNotes() {
   } finally {
     elements.generateWorkingNotes.disabled = false;
     elements.generateWorkingNotes.textContent = "先看 Working Notes";
+  }
+}
+
+async function handleGenerateBookletOutline() {
+  clearError();
+  elements.generateBookletOutline.disabled = true;
+  elements.generateBookletOutline.textContent = "生成中...";
+  try {
+    await saveSettings();
+    if (!elements.checkPersonal.checked || !elements.checkNonCommercial.checked) {
+      throw new Error("请先确认使用声明。");
+    }
+    if (!latestWorkingNotes?.sections?.length) {
+      throw new Error("请先生成 Working Notes。");
+    }
+
+    const resolvedTitle = elements.title.value.trim() || latestWorkingNotes.title || autoGenerateTitle(elements.transcriptText.value);
+    elements.title.value = resolvedTitle;
+
+    const payload = {
+      title: resolvedTitle,
+      language: elements.language.value.trim(),
+      working_notes: latestWorkingNotes,
+      metadata: {
+        episode_url: elements.episodeUrl.value.trim() || undefined,
+      },
+      compliance_declaration: {
+        for_personal_or_authorized_use_only: true,
+        no_commercial_use: true,
+      },
+    };
+
+    const created = await apiRequest("/v1/booklet-outline/from-working-notes", "POST", payload);
+    renderStatus({
+      job_id: created.job_id,
+      status: created.status,
+      progress: 100,
+      stage: "completed",
+    });
+    renderBookletOutline(created);
+    if (Array.isArray(created.stages) && created.stages.length > 0) {
+      renderInspector({ stages: created.stages });
+    } else {
+      elements.eventsList.innerHTML = "<li>未返回调试阶段信息。</li>";
+    }
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : "Booklet Outline 生成失败");
+  } finally {
+    elements.generateBookletOutline.disabled = false;
+    elements.generateBookletOutline.textContent = "继续生成 Outline";
   }
 }
 
@@ -543,6 +639,7 @@ async function init() {
   });
   elements.loadSample.addEventListener("click", loadSample);
   elements.generateWorkingNotes.addEventListener("click", handleGenerateWorkingNotes);
+  elements.generateBookletOutline.addEventListener("click", handleGenerateBookletOutline);
   await loadSettings();
 }
 
