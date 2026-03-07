@@ -9,6 +9,8 @@ import { createEpubFromBookletDraft } from "./local-epub.js";
 
 const SETTINGS_KEY = "pte_settings_v2";
 const WORKSPACE_KEY = "pte_workspace_v1";
+const HISTORY_KEY = "pte_history_v1";
+const HISTORY_MAX_ENTRIES = 100;
 
 const elements = {
   // Views
@@ -73,6 +75,11 @@ const elements = {
   bookletDraftTitle: document.getElementById("booklet-draft-title"),
   bookletDraftSections: document.getElementById("booklet-draft-sections"),
   
+  // History
+  openHistoryBtn: document.getElementById("open-history"),
+  historyEmpty: document.getElementById("history-empty"),
+  historyList: document.getElementById("history-list"),
+
   // Modal Triggers
   modalOverlay: document.getElementById("modal-overlay"),
   openSettingsBtn: document.getElementById("open-settings"),
@@ -443,6 +450,175 @@ function renderBookletDraft(draft) {
 }
 
 // -----------------------------------------------------------------------------
+// History
+// -----------------------------------------------------------------------------
+
+async function saveToHistory() {
+  const title = elements.title.value.trim();
+  if (!title || !latestBookletDraft) return;
+
+  const entry = {
+    id: crypto.randomUUID(),
+    title,
+    language: elements.language.value,
+    episodeUrl: elements.episodeUrl.value,
+    createdAt: new Date().toISOString(),
+    pinned: false,
+    sectionCount: latestBookletDraft?.sections?.length || 0,
+    transcriptPreview: (elements.transcriptText.value || "").slice(0, 200),
+    workingNotes: latestWorkingNotes,
+    bookletOutline: latestBookletOutline,
+    bookletDraft: latestBookletDraft,
+    artifactSummary: latestArtifactSummary
+      ? { file_name: latestArtifactSummary.file_name, size_bytes: latestArtifactSummary.size_bytes, created_at: latestArtifactSummary.created_at }
+      : null,
+  };
+
+  const stored = await getStorageArea().get([HISTORY_KEY]);
+  const history = stored[HISTORY_KEY] || [];
+  history.unshift(entry);
+
+  // Cap at HISTORY_MAX_ENTRIES — drop oldest unpinned first
+  while (history.length > HISTORY_MAX_ENTRIES) {
+    const lastUnpinnedIdx = history.findLastIndex(e => !e.pinned);
+    if (lastUnpinnedIdx === -1) break; // all pinned, can't trim further
+    history.splice(lastUnpinnedIdx, 1);
+  }
+
+  await getStorageArea().set({ [HISTORY_KEY]: history });
+}
+
+async function renderHistoryList() {
+  const stored = await getStorageArea().get([HISTORY_KEY]);
+  const history = stored[HISTORY_KEY] || [];
+
+  elements.historyList.innerHTML = "";
+  if (!history.length) {
+    elements.historyEmpty.hidden = false;
+    return;
+  }
+  elements.historyEmpty.hidden = true;
+
+  // Sort: pinned first, then by date desc
+  const sorted = [...history].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+
+  const pinned = sorted.filter(e => e.pinned);
+  const unpinned = sorted.filter(e => !e.pinned);
+
+  if (pinned.length) {
+    const div = document.createElement("div");
+    div.className = "history-divider";
+    div.textContent = "已收藏";
+    elements.historyList.appendChild(div);
+    for (const entry of pinned) elements.historyList.appendChild(buildHistoryCard(entry));
+  }
+  if (unpinned.length) {
+    const div = document.createElement("div");
+    div.className = "history-divider";
+    div.textContent = pinned.length ? "全部" : "历史记录";
+    elements.historyList.appendChild(div);
+    for (const entry of unpinned) elements.historyList.appendChild(buildHistoryCard(entry));
+  }
+}
+
+function buildHistoryCard(entry) {
+  const card = document.createElement("div");
+  card.className = `history-card${entry.pinned ? " pinned" : ""}`;
+
+  const body = document.createElement("div");
+  body.style.overflow = "hidden";
+  body.addEventListener("click", () => loadFromHistory(entry));
+
+  const title = document.createElement("div");
+  title.className = "history-card-title";
+  title.textContent = entry.title;
+  body.appendChild(title);
+
+  const meta = document.createElement("div");
+  meta.className = "history-card-meta";
+  const date = new Date(entry.createdAt);
+  meta.textContent = `${date.toLocaleDateString()} · ${entry.sectionCount} 节`;
+  body.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "history-card-actions";
+
+  const pinBtn = document.createElement("button");
+  pinBtn.textContent = entry.pinned ? "★" : "☆";
+  pinBtn.title = entry.pinned ? "取消收藏" : "收藏";
+  pinBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleHistoryPin(entry.id); });
+
+  const delBtn = document.createElement("button");
+  delBtn.textContent = "🗑";
+  delBtn.title = "删除";
+  delBtn.addEventListener("click", (e) => { e.stopPropagation(); deleteHistoryEntry(entry.id); });
+
+  actions.appendChild(pinBtn);
+  actions.appendChild(delBtn);
+
+  card.appendChild(body);
+  card.appendChild(actions);
+  return card;
+}
+
+async function toggleHistoryPin(id) {
+  const stored = await getStorageArea().get([HISTORY_KEY]);
+  const history = stored[HISTORY_KEY] || [];
+  const entry = history.find(e => e.id === id);
+  if (entry) entry.pinned = !entry.pinned;
+  await getStorageArea().set({ [HISTORY_KEY]: history });
+  await renderHistoryList();
+}
+
+async function deleteHistoryEntry(id) {
+  if (!confirm("确定删除这条历史记录？")) return;
+  const stored = await getStorageArea().get([HISTORY_KEY]);
+  const history = (stored[HISTORY_KEY] || []).filter(e => e.id !== id);
+  await getStorageArea().set({ [HISTORY_KEY]: history });
+  await renderHistoryList();
+}
+
+function loadFromHistory(entry) {
+  closeAllModals();
+
+  // Populate form fields
+  elements.title.value = entry.title || "";
+  elements.language.value = entry.language || "zh-CN";
+  elements.episodeUrl.value = entry.episodeUrl || "";
+  elements.transcriptText.value = entry.transcriptPreview || "";
+
+  // Restore state
+  if (entry.workingNotes) renderWorkingNotes(entry.workingNotes);
+  if (entry.bookletOutline) renderBookletOutline(entry.bookletOutline);
+  if (entry.bookletDraft) renderBookletDraft(entry.bookletDraft);
+
+  // Show pipeline view with all steps completed
+  switchView("pipeline");
+  updateProgress("已完成", "完成", 100);
+  setStepState("notes", "completed");
+  setStepState("outline", "completed");
+  setStepState("draft", "completed");
+  setStepState("epub", "completed", "从历史记录还原");
+
+  // Restore artifact summary (no blob URL available)
+  latestArtifactSummary = entry.artifactSummary || null;
+  elements.epubContainer.innerHTML = "";
+  if (latestArtifactSummary) {
+    const span = document.createElement("span");
+    span.style.fontSize = "12px";
+    span.style.color = "var(--muted)";
+    span.textContent = `${latestArtifactSummary.file_name} (历史记录，需重新生成下载)`;
+    elements.epubContainer.appendChild(span);
+  }
+
+  // Persist as current workspace
+  persistWorkspace().catch(console.error);
+}
+
+// -----------------------------------------------------------------------------
 // Pipeline Orchestration
 // -----------------------------------------------------------------------------
 function resetPipelineUI() {
@@ -539,6 +715,7 @@ async function handleGeneratePipeline(event) {
     updateProgress("已完成", "完成", 100);
 
     await persistWorkspace();
+    await saveToHistory();
 
   } catch (error) {
     console.error(error);
@@ -659,6 +836,7 @@ async function init() {
   });
   
   // Modal toggles
+  elements.openHistoryBtn.addEventListener("click", () => { openModal("modal-history"); renderHistoryList(); });
   elements.openSettingsBtn.addEventListener("click", () => openModal("modal-settings"));
   elements.btns.viewNotes.addEventListener("click", () => openModal("modal-notes"));
   elements.btns.viewOutline.addEventListener("click", () => openModal("modal-outline"));

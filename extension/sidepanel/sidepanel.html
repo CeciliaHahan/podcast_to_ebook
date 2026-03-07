@@ -13,7 +13,10 @@
     <main class="layout">
       <header class="top-nav">
         <h1>播客转 EPUB</h1>
-        <button id="open-settings" class="icon-btn" aria-label="设置">⚙️</button>
+        <div class="top-nav-actions">
+          <button id="open-history" class="icon-btn" aria-label="历史记录">🕐</button>
+          <button id="open-settings" class="icon-btn" aria-label="设置">⚙️</button>
+        </div>
       </header>
 
       <!-- VIEW 1: Input -->
@@ -171,6 +174,18 @@
           <h3 id="booklet-draft-title"></h3>
           <div id="booklet-draft-sections"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="modal-history" class="modal-panel slide-out">
+      <div class="modal-header">
+        <h2>历史记录</h2>
+        <button class="close-modal icon-btn" data-target="modal-history">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="history-empty" class="empty-state">暂无历史记录</div>
+        <div id="history-list"></div>
       </div>
     </div>
 

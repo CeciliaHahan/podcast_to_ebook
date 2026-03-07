@@ -4,7 +4,7 @@
   "description": "Convert podcast inputs into EPUB/PDF/Markdown from a Side Panel workspace.",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage"],
+  "permissions": ["sidePanel", "storage", "unlimitedStorage"],
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.openai.com/*"

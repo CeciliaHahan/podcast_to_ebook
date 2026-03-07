@@ -204,6 +204,28 @@ button.icon-btn:hover { background: rgba(0,0,0,0.05); }
 .artifact-card-link:hover { background: #dbeafe; }
 .artifact-type { font-size: 11px; font-weight: 700; opacity: 0.8; margin-bottom: 4px; }
 
+/* Top Nav Actions */
+.top-nav-actions { display: flex; gap: 4px; align-items: center; }
+
+/* History */
+.history-divider { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
+.history-divider:first-child { margin-top: 0; }
+
+.history-card {
+  display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px;
+  padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(255,255,255,0.75); margin-bottom: 8px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.history-card:hover { background: var(--accent-soft); border-color: var(--accent); }
+.history-card.pinned { border-left: 3px solid var(--accent); }
+
+.history-card-title { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-card-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.history-card-actions { display: flex; gap: 4px; align-items: center; }
+.history-card-actions button { padding: 4px 6px; font-size: 14px; min-width: 28px; background: transparent; border: none; color: var(--muted); border-radius: 6px; }
+.history-card-actions button:hover { background: rgba(0,0,0,0.05); }
+
 @media (min-width: 720px) {
   .modal-panel { border-left: 1px solid var(--line); }
 }
