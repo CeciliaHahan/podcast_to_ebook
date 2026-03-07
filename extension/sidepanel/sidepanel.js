@@ -271,16 +271,74 @@ function renderInspector(stages) {
   latestStages = Array.isArray(stages) ? stages : [];
   elements.eventsList.innerHTML = "";
   if (!latestStages.length) {
-    elements.eventsList.innerHTML = "<li>暂无调试阶段信息。</li>";
+    const li = document.createElement("li");
+    li.style.color = "var(--muted)";
+    li.style.textAlign = "center";
+    li.style.padding = "16px";
+    li.textContent = "暂无调试日志。";
+    elements.eventsList.appendChild(li);
     return;
   }
   for (const stage of latestStages) {
     const li = document.createElement("li");
-    const note = stage.notes ? `\n备注: ${stage.notes}` : "";
-    li.textContent =
-      `${new Date(stage.ts).toLocaleTimeString()} · ${localizeStage(stage.stage)}` +
-      `\n输入: ${toJsonPreview(stage.input)}` +
-      `\n输出: ${toJsonPreview(stage.output)}${note}`;
+    
+    // Header
+    const header = document.createElement("div");
+    header.className = "log-header";
+    
+    const title = document.createElement("span");
+    title.textContent = localizeStage(stage.stage);
+    
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = new Date(stage.ts).toLocaleTimeString();
+    
+    header.appendChild(title);
+    header.appendChild(time);
+    li.appendChild(header);
+
+    // Note
+    if (stage.notes) {
+      const note = document.createElement("div");
+      note.className = "log-note";
+      note.textContent = stage.notes;
+      li.appendChild(note);
+    }
+
+    // Input Details
+    if (stage.input) {
+      const inputDetails = document.createElement("details");
+      inputDetails.className = "log-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "请求输入 (Input)";
+      const body = document.createElement("div");
+      body.className = "log-details-body";
+      const pre = document.createElement("pre");
+      pre.className = "log-json";
+      pre.textContent = toJsonPreview(stage.input);
+      body.appendChild(pre);
+      inputDetails.appendChild(summary);
+      inputDetails.appendChild(body);
+      li.appendChild(inputDetails);
+    }
+
+    // Output Details
+    if (stage.output) {
+      const outputDetails = document.createElement("details");
+      outputDetails.className = "log-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "响应输出 (Output)";
+      const body = document.createElement("div");
+      body.className = "log-details-body";
+      const pre = document.createElement("pre");
+      pre.className = "log-json";
+      pre.textContent = toJsonPreview(stage.output);
+      body.appendChild(pre);
+      outputDetails.appendChild(summary);
+      outputDetails.appendChild(body);
+      li.appendChild(outputDetails);
+    }
+
     elements.eventsList.appendChild(li);
   }
 }
