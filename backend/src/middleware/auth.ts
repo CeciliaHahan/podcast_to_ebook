@@ -30,8 +30,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     if (!email) {
       throw new ApiError(401, "UNAUTHORIZED", "Missing or invalid bearer token.");
     }
-    const isStatelessEpubEndpoint = req.path === "/epub/from-transcript";
-    if (!config.databaseEnabled || isStatelessEpubEndpoint) {
+    if (!config.databaseEnabled) {
       const stableUserId = `usr_${createHash("sha256").update(email).digest("hex").slice(0, 16)}`;
       req.authUser = { id: stableUserId, email };
       next();
