@@ -34,7 +34,7 @@
           </details>
           <label>
             转录文本
-            <textarea id="transcript-text" required maxlength="120000" placeholder="粘贴完整转录文本"></textarea>
+            <textarea id="transcript-text" required maxlength="80000" placeholder="粘贴完整转录文本"></textarea>
           </label>
           <div class="primary-actions">
             <button id="generate-working-notes" type="button" class="ghost">先看 Working Notes</button>
@@ -126,22 +126,27 @@
 
       <section class="card settings">
         <details class="details-card">
-          <summary>连接设置（调试）</summary>
+          <summary>模型设置</summary>
           <div class="details-body">
             <div class="grid">
               <label>
-                API 地址
-                <input id="api-base-url" type="url" placeholder="http://localhost:8080" />
+                LLM Base URL
+                <input id="llm-base-url" type="url" placeholder="https://openrouter.ai/api/v1" />
               </label>
               <label>
-                令牌（Bearer Token）
-                <input id="api-token" type="text" placeholder="dev:cecilia@example.com" />
+                模型名称
+                <input id="llm-model" type="text" placeholder="google/gemini-3-flash-preview" />
+              </label>
+              <label>
+                API Key
+                <input id="llm-api-key" type="password" placeholder="填入你自己的 key" />
               </label>
             </div>
             <div class="actions">
               <button id="save-settings" type="button">保存设置</button>
               <button id="load-sample" type="button" class="ghost">填充示例文本</button>
             </div>
+            <p class="feedback">API key 只保存在当前 Chrome 配置文件的本地存储里，不会再走 `localhost` 后端。</p>
             <p id="settings-feedback" class="feedback" aria-live="polite"></p>
           </div>
         </details>
