@@ -252,10 +252,22 @@
             <input id="llm-api-key" type="password" placeholder="填入你自己的 key" />
           </label>
         </div>
+
+        <details class="details-card" style="margin-top: 16px;">
+          <summary>高级参数</summary>
+          <div class="details-body grid">
+            <label>
+              Temperature
+              <input id="llm-temperature" type="number" step="0.1" min="0" max="2" placeholder="0.2" />
+              <span class="micro-hint">控制输出的随机性（0.0最确定，2.0最发散）。留空则使用默认值。</span>
+            </label>
+          </div>
+        </details>
+
         <div class="actions" style="margin-top: 16px;">
           <button id="save-settings" type="button">保存设置</button>
         </div>
-        <p class="feedback">API key 只保存在当前 Chrome 配置文件的本地存储里，不会再走 `localhost` 后端。</p>
+        <p class="feedback">API key 只保存在当前 Chrome 配置 文件的本地存储里，不会再走 `localhost` 后端。</p>
         <p id="settings-feedback" class="feedback" aria-live="polite"></p>
       </div>
     </div>

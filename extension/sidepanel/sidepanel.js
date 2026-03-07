@@ -22,6 +22,7 @@ const elements = {
   llmBaseUrl: document.getElementById("llm-base-url"),
   llmApiKey: document.getElementById("llm-api-key"),
   llmModel: document.getElementById("llm-model"),
+  llmTemperature: document.getElementById("llm-temperature"),
   saveSettings: document.getElementById("save-settings"),
   loadSample: document.getElementById("load-sample"),
   settingsFeedback: document.getElementById("settings-feedback"),
@@ -772,6 +773,9 @@ async function loadSettings() {
   elements.llmBaseUrl.value = settings.llmBaseUrl || DEFAULT_LLM_SETTINGS.llmBaseUrl;
   elements.llmApiKey.value = settings.llmApiKey || DEFAULT_LLM_SETTINGS.llmApiKey || "";
   elements.llmModel.value = settings.llmModel || DEFAULT_LLM_SETTINGS.llmModel;
+  if (settings.temperature !== undefined) {
+    elements.llmTemperature.value = settings.temperature;
+  }
   
   elements.prompts.wnSystem.value = settings.prompts.wnSystem;
   elements.prompts.wnUser.value = settings.prompts.wnUser;
@@ -786,6 +790,7 @@ async function saveSettings() {
     llmBaseUrl: String(elements.llmBaseUrl.value || DEFAULT_LLM_SETTINGS.llmBaseUrl).trim().replace(/\/$/, ""),
     llmApiKey: String(elements.llmApiKey.value || "").trim(),
     llmModel: String(elements.llmModel.value || DEFAULT_LLM_SETTINGS.llmModel).trim() || DEFAULT_LLM_SETTINGS.llmModel,
+    temperature: elements.llmTemperature.value ? Number(elements.llmTemperature.value) : undefined,
     prompts: {
       wnSystem: elements.prompts.wnSystem.value,
       wnUser: elements.prompts.wnUser.value,

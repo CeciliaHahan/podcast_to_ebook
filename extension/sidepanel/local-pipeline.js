@@ -371,7 +371,7 @@ export async function createWorkingNotesFromTranscript(params) {
     settings: params.settings,
     prompt,
     systemPrompt,
-    temperature: 0.2,
+    temperature: params.settings.temperature ?? 0.2,
     pushStage,
   });
   const workingNotes = readWorkingNotesFromUnknown(result.parsed, params.title);
@@ -429,7 +429,7 @@ export async function createBookletOutlineFromWorkingNotes(params) {
     settings: params.settings,
     prompt,
     systemPrompt,
-    temperature: 0.2,
+    temperature: params.settings.temperature ?? 0.2,
     pushStage,
   });
   const bookletOutline = readBookletOutlineFromUnknown(result.parsed, params.title);
@@ -490,7 +490,7 @@ export async function createBookletDraftFromOutline(params) {
     settings: params.settings,
     prompt,
     systemPrompt,
-    temperature: 0.3,
+    temperature: params.settings.temperature ?? 0.3,
     pushStage,
   });
   const bookletDraft = readBookletDraftFromUnknown(result.parsed, params.title);
