@@ -1,13 +1,14 @@
 # Chrome Extension (MVP Side Panel)
 
-This extension provides the V1 transcript workflow:
+This extension now runs the transcript workflow entirely inside the side panel:
 
-- configure API URL + bearer token
+- configure LLM base URL + model + API key
 - generate one-pass working notes from a transcript
 - generate a booklet outline from working notes
-- submit transcript job (EPUB output only)
-- poll job status
-- view artifacts and stage-by-stage inspector trace
+- generate a booklet draft from the outline
+- export EPUB directly in the browser
+- restore the last workspace from `chrome.storage.local`
+- view stage-by-stage inspector trace
 
 ## Load in Chrome
 
@@ -21,11 +22,15 @@ This extension provides the V1 transcript workflow:
 1. Click extension icon
 2. Click **Open Side Panel**
 3. In Side Panel, set:
-   - API Base URL (default: `http://localhost:8080`)
-   - Bearer token (default: `dev:cecilia@example.com`)
-4. Fill transcript form and submit
+   - LLM Base URL (default: `https://openrouter.ai/api/v1`)
+   - Model (default: `google/gemini-3-flash-preview`)
+   - API key
+4. Fill transcript form
+5. Run the stages in order: Working Notes -> Outline -> Draft -> EPUB
 
 ## Notes
 
 - Current UI is transcript-first and EPUB-only (PDF/Markdown can be added back later).
-- Settings and last job id are saved in `chrome.storage.local`.
+- Settings, transcript text, staged outputs, and inspector traces are saved in `chrome.storage.local`.
+- The extension no longer needs a local backend on `http://localhost:8080`.
+- The bundled manifest currently allows direct calls to OpenRouter and OpenAI official endpoints.
