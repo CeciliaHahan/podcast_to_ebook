@@ -109,6 +109,10 @@ Important: there is no background queue right now. The pipeline runs inline in t
 
 ## Target Simplification (Planned)
 
+Reference doc:
+
+- `docs/canonical-transcript-to-booklet-pipeline.md`
+
 ```mermaid
 flowchart TD
   A[Extension side panel] --> B[POST /v1/epub/from-transcript]
