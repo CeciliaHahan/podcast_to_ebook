@@ -17,11 +17,7 @@ CREATE_RESPONSE="$(curl -sS -X POST "$BASE_URL/v1/epub/from-transcript" \
     "language":"zh-CN",
     "transcript_text":"这是用于 smoke test 的测试文本，验证任务创建与产物下载流程。",
     "template_id":"templateA-v0-book",
-    "metadata":{"episode_url":"https://example.com/ep/smoke"},
-    "compliance_declaration":{
-      "for_personal_or_authorized_use_only":true,
-      "no_commercial_use":true
-    }
+    "metadata":{"episode_url":"https://example.com/ep/smoke"}
   }')"
 echo "$CREATE_RESPONSE"
 
