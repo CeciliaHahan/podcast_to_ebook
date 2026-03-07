@@ -62,6 +62,21 @@ Manual dashboard-only start (if backend is already running):
 node scripts/observe-transcript-run.mjs
 ```
 
+Staged artifact review UI for quality inspection:
+
+```bash
+node scripts/observe-staged-booklet-run.mjs
+```
+
+This staged UI shows:
+
+- transcript input
+- working notes
+- outline
+- draft
+- final EPUB download
+- low-level stage timeline for each API step
+
 What you get:
 
 - sample picker (local samples from repo files)
