@@ -13,6 +13,15 @@ export type WorkingNotes = {
   }>;
 };
 
+export type BookletOutline = {
+  title: string;
+  sections: Array<{
+    id: string;
+    heading: string;
+    goal?: string;
+  }>;
+};
+
 function extractFirstJsonObject(input: string): string | null {
   let depth = 0;
   let start = -1;
@@ -112,6 +121,43 @@ function readWorkingNotesFromUnknown(input: unknown, fallbackTitle: string): Wor
   };
 }
 
+function readBookletOutlineFromUnknown(input: unknown, fallbackTitle: string): BookletOutline | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const root = input as Record<string, unknown>;
+  const sectionsRaw = Array.isArray(root.sections) ? root.sections : [];
+  const sections: BookletOutline["sections"] = [];
+
+  for (let index = 0; index < sectionsRaw.length && index < 8; index += 1) {
+    const item = sectionsRaw[index];
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const heading = cleanLine(record.heading, 60);
+    const goal = cleanLine(record.goal, 120);
+    const id = cleanLine(record.id, 40) || `section_${index + 1}`;
+    if (!heading) {
+      continue;
+    }
+    sections.push({
+      id,
+      heading,
+      ...(goal ? { goal } : {}),
+    });
+  }
+
+  if (!sections.length) {
+    return null;
+  }
+
+  return {
+    title: cleanLine(root.title, 120) || fallbackTitle,
+    sections,
+  };
+}
+
 function buildPrompt(params: { title: string; language: string; transcriptText: string }) {
   return [
     "任务：把 transcript 转成用于后续生成 booklet 的 working notes。",
@@ -142,16 +188,40 @@ function buildPrompt(params: { title: string; language: string; transcriptText: 
   ].join("\n");
 }
 
+function buildOutlinePrompt(params: { title: string; language: string; workingNotes: WorkingNotes }) {
+  return [
+    "任务：把 working notes 转成 booklet outline。",
+    "只输出一个 JSON 对象，不要 markdown，不要解释，不要额外文字。",
+    "目标：先产出一个可检查的章节顺序，不写最终正文。",
+    "严格要求：",
+    "1) 只能使用传入的 working notes，不得使用外部知识。",
+    "2) sections 保持 3-6 段，顺序要尽量自然。",
+    "3) 每段必须有 id 和 heading，可以有 goal。",
+    "4) goal 要说清楚这一段想帮助读者理解什么，但不要写成长段正文。",
+    "5) 不要发明 quotes、actions、memory、segmentation 之类额外结构。",
+    "JSON schema:",
+    `{
+  "title": string,
+  "sections": [
+    {
+      "id": string,
+      "heading": string,
+      "goal": string
+    }
+  ]
+}`,
+    `上下文：title=${params.title}; language=${params.language}`,
+    "working notes:",
+    JSON.stringify(params.workingNotes, null, 2),
+  ].join("\n");
+}
+
 export async function createWorkingNotesFromTranscript(params: {
   title: string;
   language: string;
   transcriptText: string;
   metadata?: Record<string, unknown>;
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
 }) {
-  if (!params.compliance.for_personal_or_authorized_use_only || !params.compliance.no_commercial_use) {
-    throw new ApiError(400, "FORBIDDEN", "Compliance declaration must be accepted.");
-  }
   if (!config.llmApiKey) {
     throw new ApiError(503, "LLM_UNAVAILABLE", "LLM API key is not configured.");
   }
@@ -280,6 +350,136 @@ export async function createWorkingNotesFromTranscript(params: {
     }
     const message = error instanceof Error ? error.message : "Unknown working notes error";
     throw new ApiError(502, "WORKING_NOTES_FAILED", message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function createBookletOutlineFromWorkingNotes(params: {
+  title: string;
+  language: string;
+  workingNotes: WorkingNotes;
+  metadata?: Record<string, unknown>;
+}) {
+  if (!config.llmApiKey) {
+    throw new ApiError(503, "LLM_UNAVAILABLE", "LLM API key is not configured.");
+  }
+
+  const jobId = createId("outline");
+  const createdAt = new Date().toISOString();
+  const sourceRef = typeof params.metadata?.episode_url === "string" ? params.metadata.episode_url : undefined;
+  const stages: InspectorStageRecord[] = [];
+  const pushStage = (stage: InspectorPushInput) => {
+    stages.push({
+      ...stage,
+      ts: new Date().toISOString(),
+    });
+  };
+
+  pushStage({
+    stage: "normalization",
+    input: {
+      source_type: "working_notes",
+      source_ref: sourceRef ?? null,
+      section_count: params.workingNotes.sections.length,
+      summary_count: params.workingNotes.summary.length,
+      working_notes_preview: JSON.stringify(params.workingNotes, null, 2).slice(0, 2500),
+    },
+    config: {
+      flow: "working_notes_to_booklet_outline",
+    },
+  });
+
+  const prompt = buildOutlinePrompt({
+    title: params.title,
+    language: params.language,
+    workingNotes: params.workingNotes,
+  });
+  const endpoint = `${config.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.llmTimeoutMs);
+
+  try {
+    pushStage({
+      stage: "llm_request",
+      config: {
+        endpoint,
+        model: config.llmModel,
+        temperature: 0.2,
+        response_format: "json_object",
+      },
+      input: {
+        prompt_preview: prompt.slice(0, 5000),
+      },
+    });
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.llmApiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.llmModel,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是 booklet outline 生成器。你的任务是把 working notes 转成 title + ordered sections 的 JSON。不得输出 schema 之外的内容。",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    const jsonCandidate = typeof content === "string" ? extractFirstJsonObject(content) : null;
+    const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
+    const bookletOutline = readBookletOutlineFromUnknown(parsed, params.title);
+
+    pushStage({
+      stage: "llm_response",
+      output: {
+        http_status: response.status,
+        parse_ok: Boolean(bookletOutline),
+        raw_content_preview: typeof content === "string" ? content.slice(0, 3000) : null,
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(502, "LLM_HTTP_ERROR", `Booklet outline generation failed with HTTP ${response.status}.`);
+    }
+    if (!bookletOutline) {
+      throw new ApiError(502, "BOOKLET_OUTLINE_PARSE_FAILED", "Failed to parse booklet outline response.");
+    }
+
+    return {
+      job_id: jobId,
+      status: "succeeded" as const,
+      created_at: createdAt,
+      booklet_outline: bookletOutline,
+      stages,
+      traceability: {
+        source_type: "working_notes" as const,
+        source_ref: sourceRef ?? "internal://source-ref",
+        generated_at: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "Unknown booklet outline error";
+    throw new ApiError(502, "BOOKLET_OUTLINE_FAILED", message);
   } finally {
     clearTimeout(timeout);
   }

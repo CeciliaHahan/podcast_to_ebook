@@ -186,10 +186,6 @@ async function runInlineOnce(payload: {
       episode_url: "https://example.com/repro/run8ace",
       generation_method: "C",
     },
-    compliance_declaration: {
-      for_personal_or_authorized_use_only: true,
-      no_commercial_use: true,
-    },
   });
 
   const epub = createResponse.artifacts.find((item) => item.type === "epub");

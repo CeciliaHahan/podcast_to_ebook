@@ -7,12 +7,6 @@ import {
   type InspectorStageRecord,
 } from "../repositories/jobsRepo.js";
 
-function assertCompliance(input: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean }) {
-  if (!input.for_personal_or_authorized_use_only || !input.no_commercial_use) {
-    throw new ApiError(400, "FORBIDDEN", "Compliance declaration must be accepted.");
-  }
-}
-
 function sanitizeTitle(input: string, fallback = "Podcast Notes"): string {
   const raw = input.trim();
   if (!raw) {
@@ -38,9 +32,7 @@ export async function createEpubFromTranscriptInline(params: {
   transcriptText: string;
   templateId: string;
   metadata?: Record<string, unknown>;
-  compliance: { for_personal_or_authorized_use_only: boolean; no_commercial_use: boolean };
 }) {
-  assertCompliance(params.compliance);
   const jobId = createId("run");
   const createdAt = new Date().toISOString();
   const resolvedTitle = sanitizeTitle(params.title);

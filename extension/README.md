@@ -4,6 +4,7 @@ This extension provides the V1 transcript workflow:
 
 - configure API URL + bearer token
 - generate one-pass working notes from a transcript
+- generate a booklet outline from working notes
 - submit transcript job (EPUB output only)
 - poll job status
 - view artifacts and stage-by-stage inspector trace

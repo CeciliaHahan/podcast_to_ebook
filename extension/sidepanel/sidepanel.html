@@ -36,12 +36,9 @@
             转录文本
             <textarea id="transcript-text" required maxlength="120000" placeholder="粘贴完整转录文本"></textarea>
           </label>
-          <div class="checks">
-            <label><input id="check-personal" type="checkbox" checked /> 仅用于个人学习或已获授权场景</label>
-            <label><input id="check-noncommercial" type="checkbox" checked /> 不用于商业用途</label>
-          </div>
           <div class="primary-actions">
             <button id="generate-working-notes" type="button" class="ghost">先看 Working Notes</button>
+            <button id="generate-booklet-outline" type="button" class="ghost">继续生成 Outline</button>
             <button id="submit-job" type="submit">开始生成 EPUB</button>
           </div>
         </form>
@@ -86,6 +83,20 @@
             <h3>候选章节</h3>
             <div id="working-notes-sections"></div>
           </div>
+        </div>
+      </section>
+
+      <section class="card booklet-outline">
+        <h2>Booklet Outline</h2>
+        <div class="outline-explainer">
+          <p><strong>这是什么：</strong>把 Working Notes 再整理成一个更接近 booklet 的章节顺序。</p>
+          <p><strong>有什么用：</strong>先看这期内容适不适合被拆成这样的章节结构，再决定是否进入正文 drafting。</p>
+          <p><strong>你现在要看什么：</strong>标题是否自然、顺序是否合理、每章 goal 是否真的有帮助。</p>
+        </div>
+        <div id="booklet-outline-empty" class="empty-state">还没有生成 Booklet Outline。</div>
+        <div id="booklet-outline-panel" hidden>
+          <h3 id="booklet-outline-title"></h3>
+          <ol id="booklet-outline-sections"></ol>
         </div>
       </section>
 
