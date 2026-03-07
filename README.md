@@ -85,23 +85,17 @@ flowchart TD
   subgraph BACKEND["Backend (dev tools only)"]
     direction TB
     EXPRESS["Express server<br/>port 8080"]
-    JOBS_REPO["jobsRepo.ts<br/>Legacy full pipeline"]
     WN_SVC["workingNotesService.ts<br/>Staged pipeline (server-side)"]
     DRAFT_SVC["draftEpubService.ts<br/>EPUB renderer"]
-    BLLM["bookletLlm.ts<br/>Legacy LLM calls"]
     PG[("PostgreSQL<br/>(optional)")]
 
     EXPRESS --> WN_SVC
     EXPRESS --> DRAFT_SVC
-    EXPRESS --> JOBS_REPO
-    JOBS_REPO --> BLLM
     EXPRESS -.->|"if DATABASE_URL set"| PG
   end
 
   subgraph DEVTOOLS["Developer Dashboards"]
-    OBS1["observe-transcript-run.mjs<br/>Single-shot pipeline viewer"]
-    OBS2["observe-staged-booklet-run.mjs<br/>Staged pipeline viewer"]
-    COMPARE["compare-methods.mjs<br/>Method A/B/C comparison"]
+    OBS["observe-staged-booklet-run.mjs<br/>Staged pipeline viewer"]
   end
 
   DEVTOOLS -->|"HTTP calls"| EXPRESS
@@ -118,10 +112,10 @@ flowchart TD
 |---|---|---|---|
 | **Extension ↔ LLM** | `local-pipeline.js` | OpenRouter/OpenAI | OpenAI Chat Completions API (`POST /chat/completions`) with `response_format: json_object` |
 | **Extension ↔ Storage** | `sidepanel.js` | `chrome.storage.local` | Two keys: `pte_settings_v2` (LLM config), `pte_workspace_v1` (full session state) |
-| **Backend ↔ LLM** | `workingNotesService.ts` / `bookletLlm.ts` | OpenRouter | Same Chat Completions API, configured via env vars |
-| **Backend ↔ Disk** | `draftEpubService.ts` / `jobsRepo.ts` | `.dev-artifacts/` | EPUB/PDF/MD files written per job ID |
-| **Backend ↔ DB** | `usersRepo.ts` / `jobsRepo.ts` | PostgreSQL | Optional — only needed for job history and user records |
-| **Dashboards ↔ Backend** | `observe-*.mjs` | Express routes | HTTP POST to `/v1/*` endpoints |
+| **Backend ↔ LLM** | `workingNotesService.ts` | OpenRouter | Same Chat Completions API, configured via env vars |
+| **Backend ↔ Disk** | `draftEpubService.ts` | `.dev-artifacts/` | EPUB files written per run ID |
+| **Backend ↔ DB** | `usersRepo.ts` | PostgreSQL | Optional — only needed for user records |
+| **Dashboards ↔ Backend** | `observe-staged-booklet-run.mjs` | Express routes | HTTP POST to `/v1/*` endpoints |
 
 ---
 
@@ -289,7 +283,7 @@ The workspace is saved to `chrome.storage.local` after each successful step. Clo
 
 ### 2. Backend (`backend/`)
 
-**Owns:** Server-side pipeline (both legacy and staged), artifact persistence to disk, optional DB-backed job history.
+**Owns:** Server-side staged pipeline (mirrors extension logic), artifact persistence to disk.
 
 **Depends on:** OpenRouter API (via `OPENROUTER_API_KEY` env var), optionally PostgreSQL.
 
@@ -301,7 +295,6 @@ The workspace is saved to `chrome.storage.local` after each successful step. Clo
 | `POST` | `/v1/booklet-outline/from-working-notes` | WorkingNotes → BookletOutline (LLM) |
 | `POST` | `/v1/booklet-draft/from-booklet-outline` | WorkingNotes + BookletOutline → BookletDraft (LLM) |
 | `POST` | `/v1/epub/from-booklet-draft` | BookletDraft → EPUB file (deterministic) |
-| `POST` | `/v1/epub/from-transcript` | Legacy single-call transcript → EPUB (full pipeline) |
 | `GET` | `/healthz` | Health check |
 | `GET` | `/downloads/:job_id/:file_name` | Artifact download (requires `?token=dev`) |
 
@@ -314,13 +307,9 @@ All routes are **synchronous** — no background queue. The pipeline runs inline
 | Service | File | What it does |
 |---|---|---|
 | Working notes pipeline | `services/workingNotesService.ts` | Three functions for the staged LLM pipeline (working notes, outline, draft) |
-| EPUB renderer (staged) | `services/draftEpubService.ts` | Builds EPUB from BookletDraft. No LLM. Writes to `.dev-artifacts/`. |
-| Legacy pipeline | `services/epubInlineService.ts` | Entry point for single-call transcript→EPUB |
-| Legacy LLM | `services/bookletLlm.ts` | Full-book and per-chapter LLM generation with prompt profiles |
-| Full pipeline engine | `repositories/jobsRepo.ts` | ~4000 lines. Transcript parsing, profile classification, semantic segmentation, chapter planning, base model building, LLM enrichment, quality gates, EPUB/PDF/MD rendering |
+| EPUB renderer | `services/draftEpubService.ts` | Builds EPUB from BookletDraft. No LLM. Writes to `.dev-artifacts/`. |
 
 **Data handoffs:**
-- `epubInlineService` → `jobsRepo.createArtifactsEphemeral()` → full pipeline → artifacts on disk
 - `workingNotesService` → LLM → validated JSON back to caller
 - `draftEpubService` → XHTML rendering → `zip` CLI → `.dev-artifacts/{jobId}/{jobId}.epub`
 
@@ -332,107 +321,11 @@ All routes are **synchronous** — no background queue. The pipeline runs inline
 
 | Script | What it does |
 |---|---|
-| `observe-transcript-run.mjs` | Web dashboard (port 4173). Pick a sample transcript, run the legacy single-call pipeline, view stage timeline + artifacts. |
 | `observe-staged-booklet-run.mjs` | Web dashboard (port 4174). Runs the 4-step staged pipeline. Shows working notes, outline, draft, and EPUB as structured cards. |
-| `compare-methods.mjs` | Runs Methods A/B/C against same transcript, writes comparison HTML+JSON reports to `tasks/method-compare/`. |
 | `run-staged-booklet-flow.mjs` | CLI runner for the staged pipeline. Saves EPUB + stage data to `.dev-artifacts/staged-runs/`. |
-| `regression-transcript-flow.sh` | Smoke test: posts transcript, verifies stages + EPUB download. |
 | `dev-up.sh` / `dev-down.sh` | Start/stop local dev stack (Postgres + backend). |
 | `run-server.sh` | One-command backend launch (foreground). |
-| `dev-smoke.sh` | Minimal smoke test (post transcript, check success). |
-
----
-
-## Legacy Pipeline (Backend Only)
-
-The backend contains an older, more elaborate pipeline in `jobsRepo.ts` used by `POST /v1/epub/from-transcript`. This is **not used by the Chrome extension** but powers the developer dashboards.
-
-```mermaid
-flowchart TD
-  A[Raw transcript text] --> B[parseTranscriptEntries<br/>speaker/timestamp/text]
-  B --> C[classifyTranscriptSourceProfile<br/>single / interview / discussion]
-  C --> D[planSemanticSegments<br/>topic shifts, time gaps, question turns]
-  D --> E[buildChapterPlan<br/>5-7 chapters with keyword-derived titles]
-  E --> F[Build deterministic base model<br/>points, quotes, explanations, actions]
-
-  F --> G{Transcript < 80k chars?}
-  G -->|Yes| H[generateBookletDraftWithLlm<br/>Full-book LLM call]
-  G -->|No| I[generateChapterPatchWithLlm<br/>Per-chapter LLM calls]
-  H -->|Fails| I
-  H -->|Succeeds| J[mergeBookletWithLlmDraft]
-  I --> K[mergeBookletWithChapterPatches]
-
-  J --> L[Quality gate<br/>30+ checks]
-  K --> L
-  L --> M[Render EPUB + PDF + MD]
-  M --> N[Write to .dev-artifacts/]
-```
-
-This pipeline produces a richer output structure (`BookletModel`) with TL;DR, glossary, action lists, appendix themes — features the staged pipeline does not yet include.
-
----
-
-## Database Schema (Optional)
-
-PostgreSQL is only needed when running the backend's job history features. The extension does not use a database.
-
-```mermaid
-erDiagram
-  users ||--o{ jobs : creates
-  users ||--o{ user_daily_usage : tracks
-  jobs ||--|| compliance_records : requires
-  jobs ||--|| job_inputs : has
-  jobs ||--o{ artifacts : produces
-  jobs ||--o{ job_events : logs
-
-  users {
-    text id PK "usr_<hex>"
-    text email UK
-    text role "user | admin"
-    text status "active | suspended"
-  }
-
-  jobs {
-    text id PK "job_<hex>"
-    text user_id FK
-    text source_type "transcript | audio | rss | link"
-    text status "queued | processing | succeeded | failed | canceled"
-    integer progress "0-100"
-    text stage
-    jsonb output_formats "['epub','pdf','md']"
-    text error_code
-    text error_message
-  }
-
-  compliance_records {
-    text id PK "cmp_<hex>"
-    text user_id FK
-    boolean personal_use_only
-    boolean no_commercial
-  }
-
-  artifacts {
-    text id PK "art_<hex>"
-    text job_id FK
-    text type "epub | pdf | md"
-    text storage_uri
-    text checksum_sha256
-    timestamp expires_at
-  }
-
-  job_inputs {
-    text id PK "inp_<hex>"
-    text job_id FK
-    jsonb metadata
-  }
-
-  job_events {
-    text id PK
-    text job_id FK
-    text level "info | warn | error"
-    jsonb details
-  }
-```
+| `dev-smoke.sh` | Minimal smoke test (post working notes, check success). |
 
 ---
 
@@ -502,17 +395,14 @@ Or use the one-command launcher:
 ./run_e2e_debug.sh            # starts Postgres + backend + dashboard
 ```
 
-### Running the Observability Dashboards
+### Running the Observability Dashboard
 
 ```bash
-# Legacy single-call pipeline viewer (port 4173)
-node scripts/observe-transcript-run.mjs
-
 # Staged 4-step pipeline viewer (port 4174)
 node scripts/observe-staged-booklet-run.mjs
 ```
 
-Transcript samples live in `tasks/transcript-samples/` and `data/transcripts/`.
+Transcript samples live in `tasks/transcript-samples/`.
 
 ---
 
@@ -531,29 +421,23 @@ Transcript samples live in `tasks/transcript-samples/` and `data/transcripts/`.
 │   └── src/
 │       ├── app.ts                # Express wiring
 │       ├── config.ts             # Env loading, LLM defaults
-│       ├── routes/v1.ts          # 5 API endpoints
+│       ├── routes/v1.ts          # 4 staged API endpoints
 │       ├── services/
 │       │   ├── workingNotesService.ts   # Staged pipeline (server-side)
-│       │   ├── draftEpubService.ts      # EPUB from BookletDraft
-│       │   ├── epubInlineService.ts     # Legacy single-call entry
-│       │   └── bookletLlm.ts           # Legacy LLM generation
+│       │   └── draftEpubService.ts      # EPUB from BookletDraft
 │       ├── repositories/
-│       │   ├── jobsRepo.ts       # Full legacy pipeline (~4000 lines)
 │       │   └── usersRepo.ts      # User upsert
 │       ├── middleware/auth.ts    # Dev-token auth
 │       └── lib/                  # Errors, async handler, ID generator
 ├── scripts/                      # Dev dashboards + test runners
-│   ├── observe-transcript-run.mjs
 │   ├── observe-staged-booklet-run.mjs
-│   ├── compare-methods.mjs
 │   ├── run-staged-booklet-flow.mjs
 │   ├── dev-up.sh / dev-down.sh
-│   └── regression-transcript-flow.sh
+│   └── dev-smoke.sh
 ├── docs/                         # Architecture + decision docs
-├── data/transcripts/             # Large real transcript samples
 ├── tasks/transcript-samples/     # Small fixture transcripts
 ├── assets/
-│   ├── fonts/                    # CJK font for PDF rendering
+│   ├── fonts/                    # CJK font for EPUB rendering
 │   └── templates/                # Baseline EPUB template
 └── run_e2e_debug.sh              # One-command dev environment
 ```
@@ -564,7 +448,7 @@ Transcript samples live in `tasks/transcript-samples/` and `data/transcripts/`.
 
 1. **Extension is serverless.** The Chrome extension calls the LLM directly — no backend in the loop. This eliminates deployment, hosting, and networking complexity for a single-user tool.
 
-2. **Staged pipeline over single-call.** Breaking transcript→EPUB into four explicit steps (notes → outline → draft → epub) lets the user inspect and retry each stage independently. The older single-call pipeline still exists in the backend for comparison testing.
+2. **Staged pipeline.** Breaking transcript→EPUB into four explicit steps (notes → outline → draft → epub) lets the user inspect and retry each stage independently.
 
 3. **EPUB built in-browser.** `local-epub.js` constructs a valid EPUB 3 ZIP using a hand-written ZIP writer. No server round-trip, no native dependencies. The file is served as a `blob:` URL.
 
@@ -578,6 +462,6 @@ Transcript samples live in `tasks/transcript-samples/` and `data/transcripts/`.
 
 8. **Workspace persistence.** The full session state (transcript, notes, outline, draft, stages) is saved to `chrome.storage.local` on every step. Closing and reopening the sidepanel restores everything.
 
-9. **Backend is a dev tool.** The Express backend + Postgres exist for quality iteration (observability dashboards, method comparisons, regression tests), not for production use.
+9. **Backend is a dev tool.** The Express backend + Postgres exist for quality iteration (observability dashboards, regression tests), not for production use.
 
 10. **`response_format: json_object`** is set on every LLM call to force structured output, reducing parse failures.
