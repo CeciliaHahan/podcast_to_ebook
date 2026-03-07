@@ -13,7 +13,7 @@ PG_LOG="/tmp/postgresql16.log"
 BACKEND_LOG="/tmp/podcasts_to_ebooks_backend.log"
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
-DASHBOARD_PORT="${DASHBOARD_PORT:-4173}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-4174}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-127.0.0.1}"
 DASHBOARD_ARGS="${DASHBOARD_ARGS:-}"
 
@@ -119,4 +119,4 @@ echo
 
 echo "[6/6] Launch dashboard (Ctrl+C to stop dashboard)"
 cd "$ROOT_DIR"
-exec node scripts/observe-transcript-run.mjs --base-url "$BASE_URL" --host "$DASHBOARD_HOST" --port "$DASHBOARD_PORT" $DASHBOARD_ARGS
+exec node scripts/observe-staged-booklet-run.mjs --base-url "$BASE_URL" --host "$DASHBOARD_HOST" --port "$DASHBOARD_PORT" $DASHBOARD_ARGS
