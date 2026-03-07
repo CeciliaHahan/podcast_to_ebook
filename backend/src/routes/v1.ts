@@ -2,7 +2,9 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { ApiError } from "../lib/errors.js";
+import { config } from "../config.js";
 import { createEpubFromTranscriptInline } from "../services/epubInlineService.js";
+import { createWorkingNotesFromTranscript } from "../services/workingNotesService.js";
 
 const router = Router();
 
@@ -17,6 +19,14 @@ const epubTranscriptRequestSchema = z.object({
   language: z.string().min(1),
   transcript_text: z.string().min(10).max(MAX_TRANSCRIPT_CHARS),
   template_id: z.string().default("templateA-v0-book"),
+  metadata: z.record(z.unknown()).optional(),
+  compliance_declaration: complianceSchema,
+});
+
+const workingNotesTranscriptRequestSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  language: z.string().min(1),
+  transcript_text: z.string().min(10).max(config.llmInputMaxChars),
   metadata: z.record(z.unknown()).optional(),
   compliance_declaration: complianceSchema,
 });
@@ -43,6 +53,20 @@ const createEpubFromTranscriptRoute = asyncHandler(async (req: Request, res) => 
   res.status(200).json(response);
 });
 
+const createWorkingNotesFromTranscriptRoute = asyncHandler(async (req: Request, res) => {
+  getUser(req);
+  const parsed = workingNotesTranscriptRequestSchema.parse(req.body);
+  const response = await createWorkingNotesFromTranscript({
+    title: parsed.title,
+    language: parsed.language,
+    transcriptText: parsed.transcript_text,
+    metadata: parsed.metadata,
+    compliance: parsed.compliance_declaration,
+  });
+  res.status(200).json(response);
+});
+
 router.post("/epub/from-transcript", createEpubFromTranscriptRoute);
+router.post("/working-notes/from-transcript", createWorkingNotesFromTranscriptRoute);
 
 export { router as v1Router };
