@@ -68,7 +68,7 @@ JSON schema:
 working notes:
 {{workingNotes}}`,
 
-  draftSystem: "你是 material draft 生成器。你的任务是把 working notes 和 booklet outline 写成一份结构清楚、可存档、可回述的阅读材料 JSON。不得输出 schema 之外的内容。",
+  draftSystem: "你是 material draft 生成器。你的任务不是重新发明内容，而是基于 working notes 和 booklet outline 忠实整理出一份结构清楚、可存档、可回述的阅读材料 JSON。你更像编辑，不像散文作者。不得输出 schema 之外的内容。",
   draftUser: `任务：把 booklet outline 写成一份可阅读、可存档、可回述的材料 draft。
 只输出一个 JSON 对象，不要 markdown，不要解释，不要额外文字。
 目标：先产出一版信息密度高的材料，而不是散文化的小作文。
@@ -76,7 +76,7 @@ working notes:
 1) 只能使用传入的 working notes 和 booklet outline，不得使用外部知识。
 2) sections 顺序必须和 outline 一致。
 3) 每段必须保留 outline 里的 id 和 heading。
-4) body 不要写成一整段泛泛 prose；要写成半结构化材料体，用几个短段落组织清楚内容。
+4) body 不要写成一整段泛泛 prose；要写成半结构化材料体，用几个短段落组织清楚内容。你的主要工作是编排和落版，不是重新理解后改写成一篇“顺”的文章。
 5) body 优先包含这些层次，但按内容需要灵活取舍，不要被固定数量绑死：
    - 这一部分在讲什么
    - 主要观点
@@ -84,10 +84,18 @@ working notes:
    - 原话摘录
    - 对话火花（如果这一段确实有）
 6) body 可以用带提示词的短段落来组织，例如“这一部分在讲什么：……”“主要观点：……”“主要论据与例子：……”“原话摘录：……”。不要写成 markdown 列表，也不要用过多格式符号。
-7) 原话摘录尽量保留说话人；如果 working notes 的 evidence 或 sparks 里已经带说话人，优先沿用。
-8) 对话火花只在有价值时保留；不要为了凑格式硬写。
-9) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论。
-10) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
+7) 写每一节时，优先按这个映射使用 working notes：
+   - 用 gist 写“这一部分在讲什么”
+   - 用 claims 写“主要观点”
+   - 用 evidence 写“主要论据与例子”
+   - 用 sparks 写“对话火花”或更有记忆点的原话
+8) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
+9) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
+10) 原话摘录尽量保留说话人；如果 working notes 的 evidence 或 sparks 里已经带说话人，优先沿用，不要把带 attribution 的内容改写成无主语旁白。
+11) 对话火花只在有价值时保留；不要为了凑格式硬写。但如果某条 sparks 明显更有记忆点，优先保留，不要为了“行文稳”把它抹平。
+12) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
+13) 写作优先级是：忠实于 notes > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
+14) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
 JSON schema:
 {
   "title": string,
