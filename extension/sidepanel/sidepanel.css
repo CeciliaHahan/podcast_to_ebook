@@ -177,9 +177,12 @@ button.icon-btn:hover { background: rgba(0,0,0,0.05); }
   border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: rgba(255, 255, 255, 0.75); display: grid; gap: 8px; margin-bottom: 12px;
 }
 .working-note-section h4, .draft-section h4 { margin: 0; font-size: 15px; color: var(--ink); }
+.working-note-gist { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.working-note-subtitle { font-size: 12px; font-weight: 700; color: var(--accent); margin-top: 4px; }
 .working-note-section ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; }
 .working-note-excerpts { display: grid; gap: 8px; margin-top: 8px; }
 .working-note-excerpt { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); color: #0f4b46; font-size: 12px; line-height: 1.6; border-left: 3px solid var(--accent); }
+.working-note-spark { background: #fff7ed; color: #7c2d12; border-left-color: #f59e0b; }
 .outline-section strong { display: block; margin-bottom: 6px; font-size: 14px; }
 .outline-goal { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; background: #fffaf2; padding: 8px 12px; border-radius: 6px; }
 .draft-section p { margin: 0; font-size: 14px; line-height: 1.8; color: var(--ink); text-align: justify; }

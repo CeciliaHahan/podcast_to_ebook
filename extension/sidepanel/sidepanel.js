@@ -4,6 +4,7 @@ import {
   createBookletDraftFromOutline,
   createBookletOutlineFromWorkingNotes,
   createWorkingNotesFromTranscript,
+  normalizeWorkingNotes,
 } from "./local-pipeline.js";
 import { DEFAULT_PROMPTS } from "./prompts.js";
 import { createEpubFromBookletDraft } from "./local-epub.js";
@@ -435,41 +436,82 @@ function buildCollapsibleText(label, text) {
 }
 
 function renderWorkingNotes(notes) {
-  latestWorkingNotes = notes || null;
+  const normalizedNotes = normalizeWorkingNotes(notes, notes?.title || elements.title.value.trim());
+  latestWorkingNotes = normalizedNotes;
   elements.workingNotesSummary.innerHTML = "";
   elements.workingNotesSections.innerHTML = "";
-  if (!notes?.summary?.length || !notes?.sections?.length) {
+  if (!normalizedNotes?.summary?.length || !normalizedNotes?.sections?.length) {
     elements.workingNotesEmpty.hidden = false;
     elements.workingNotesPanel.hidden = true;
     return;
   }
-  for (const item of notes.summary) {
+  for (const item of normalizedNotes.summary) {
     const li = document.createElement("li");
     li.textContent = item;
     elements.workingNotesSummary.appendChild(li);
   }
-  for (const section of notes.sections) {
+  for (const section of normalizedNotes.sections) {
     const article = document.createElement("article");
     article.className = "working-note-section";
     const title = document.createElement("h4");
     title.textContent = section.heading;
     article.appendChild(title);
-    const bullets = document.createElement("ul");
-    for (const bullet of section.bullets || []) {
-      const li = document.createElement("li");
-      li.textContent = bullet;
-      bullets.appendChild(li);
+    if (section.gist) {
+      const gist = document.createElement("p");
+      gist.className = "working-note-gist";
+      gist.textContent = section.gist;
+      article.appendChild(gist);
     }
-    article.appendChild(bullets);
-    const excerpts = document.createElement("div");
-    excerpts.className = "working-note-excerpts";
-    for (const excerpt of section.excerpts || []) {
-      const block = document.createElement("blockquote");
-      block.className = "working-note-excerpt";
-      block.textContent = excerpt;
-      excerpts.appendChild(block);
+
+    if (section.claims?.length) {
+      const claimsLabel = document.createElement("div");
+      claimsLabel.className = "working-note-subtitle";
+      claimsLabel.textContent = "主要观点";
+      article.appendChild(claimsLabel);
+
+      const claims = document.createElement("ul");
+      for (const claim of section.claims || []) {
+        const li = document.createElement("li");
+        li.textContent = claim;
+        claims.appendChild(li);
+      }
+      article.appendChild(claims);
     }
-    article.appendChild(excerpts);
+
+    if (section.evidence?.length) {
+      const evidenceLabel = document.createElement("div");
+      evidenceLabel.className = "working-note-subtitle";
+      evidenceLabel.textContent = "主要论据与例子";
+      article.appendChild(evidenceLabel);
+
+      const evidence = document.createElement("div");
+      evidence.className = "working-note-excerpts";
+      for (const item of section.evidence || []) {
+        const block = document.createElement("blockquote");
+        block.className = "working-note-excerpt";
+        block.textContent = item.speaker ? `${item.speaker}：${item.text}` : item.text;
+        evidence.appendChild(block);
+      }
+      article.appendChild(evidence);
+    }
+
+    if (section.sparks?.length) {
+      const sparksLabel = document.createElement("div");
+      sparksLabel.className = "working-note-subtitle";
+      sparksLabel.textContent = "对话火花";
+      article.appendChild(sparksLabel);
+
+      const sparks = document.createElement("div");
+      sparks.className = "working-note-excerpts";
+      for (const item of section.sparks || []) {
+        const block = document.createElement("blockquote");
+        block.className = "working-note-excerpt working-note-spark";
+        block.textContent = item.speaker ? `${item.speaker}：${item.text}` : item.text;
+        sparks.appendChild(block);
+      }
+      article.appendChild(sparks);
+    }
+
     elements.workingNotesSections.appendChild(article);
   }
   elements.workingNotesEmpty.hidden = true;

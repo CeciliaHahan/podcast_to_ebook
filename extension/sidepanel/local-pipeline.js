@@ -107,6 +107,61 @@ function readStringList(input, maxItems, maxItemLength) {
   return output;
 }
 
+function readSpeakerTextEntry(input, maxTextLength) {
+  if (!input) {
+    return null;
+  }
+  if (typeof input === "string") {
+    const cleaned = cleanLine(input, maxTextLength + 42);
+    if (!cleaned) {
+      return null;
+    }
+    const match = cleaned.match(/^([^：:\n]{1,24})[：:]\s*(.+)$/);
+    if (!match) {
+      return { text: cleanLine(cleaned, maxTextLength) };
+    }
+    const speaker = cleanLine(match[1], 40);
+    const text = cleanLine(match[2], maxTextLength);
+    if (!text) {
+      return null;
+    }
+    return speaker ? { speaker, text } : { text };
+  }
+  if (typeof input !== "object") {
+    return null;
+  }
+  const speaker = cleanLine(input.speaker, 40);
+  const text = cleanLine(input.text, maxTextLength);
+  if (!text) {
+    return null;
+  }
+  return speaker ? { speaker, text } : { text };
+}
+
+function readSpeakerTextList(input, maxItems, maxTextLength) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const seen = new Set();
+  const output = [];
+  for (const item of input) {
+    const entry = readSpeakerTextEntry(item, maxTextLength);
+    if (!entry) {
+      continue;
+    }
+    const key = `${entry.speaker || ""}::${entry.text}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(entry);
+    if (output.length >= maxItems) {
+      break;
+    }
+  }
+  return output;
+}
+
 function readWorkingNotesFromUnknown(input, fallbackTitle) {
   if (!input || typeof input !== "object") {
     return null;
@@ -121,12 +176,14 @@ function readWorkingNotesFromUnknown(input, fallbackTitle) {
       continue;
     }
     const heading = cleanLine(item.heading, 60);
-    const bullets = readStringList(item.bullets, 5, 180);
-    const excerpts = readStringList(item.excerpts, 3, 220);
-    if (!heading || !bullets.length || !excerpts.length) {
+    const claims = readStringList(item.claims || item.bullets, 6, 180);
+    const evidence = readSpeakerTextList(item.evidence || item.excerpts, 5, 220);
+    const sparks = readSpeakerTextList(item.sparks, 3, 220);
+    const gist = cleanLine(item.gist, 240) || cleanLine(claims[0] || evidence[0]?.text || sparks[0]?.text, 240);
+    if (!heading || !gist || (!claims.length && !evidence.length && !sparks.length)) {
       continue;
     }
-    sections.push({ heading, bullets, excerpts });
+    sections.push({ heading, gist, claims, evidence, sparks });
   }
 
   if (!summary.length || !sections.length) {
@@ -138,6 +195,10 @@ function readWorkingNotesFromUnknown(input, fallbackTitle) {
     summary,
     sections,
   };
+}
+
+export function normalizeWorkingNotes(input, fallbackTitle = "") {
+  return readWorkingNotesFromUnknown(input, fallbackTitle);
 }
 
 function readBookletOutlineFromUnknown(input, fallbackTitle) {

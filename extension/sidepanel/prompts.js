@@ -8,11 +8,12 @@ working notes 只服务于后续结构整理和材料写作，不是最终 ebook
 2) summary 用来概括这期最重要的结论，按内容需要写，不要为了凑数量写空话。
 3) sections 按内容自然分组，不要机械凑固定段数；只要覆盖完整且结构清楚即可。
 4) 每段 section 的 heading 要具体，像一个读者能理解的小标题，而不是空泛主题词。
-5) bullets 要保留这一段真正重要的观点、论据、例子或分歧，不要只写泛泛总结。
-6) excerpts 必须来自 transcript，尽量保留原话；如果能判断说话人，请在摘录里直接保留说话人信息，例如“发言人2：……”或“主持人：……”。不要为了格式美观去删掉说话人。
-7) 如果某一段里有特别有代表性的表达、好笑的话、锋利的判断或精彩的碰撞，优先保留进 excerpts。
-8) 不要发明时间戳、theme id、claim id、utterance id、support refs。
-9) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
+5) gist 用 2-4 句说明这一节到底在讲什么，帮助后续写作快速进入这一节。
+6) claims 只放这一节真正核心的判断，不要把例子、寒暄和泛泛总结混进去。
+7) evidence 用来保留支撑 claims 的关键论据、例子或短引述。优先保留 speaker；如果能判断说话人，请填写 speaker。text 必须来自 transcript，不要改写成外部总结。
+8) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、精彩的碰撞。不是每节都必须有，但有价值时优先保留。
+9) 不要发明时间戳、theme id、claim id、utterance id、support refs。
+10) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
 JSON schema:
 {
   "title": string,
@@ -20,8 +21,20 @@ JSON schema:
   "sections": [
     {
       "heading": string,
-      "bullets": string[],
-      "excerpts": string[]
+      "gist": string,
+      "claims": string[],
+      "evidence": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ],
+      "sparks": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ]
     }
   ]
 }
@@ -38,7 +51,7 @@ transcript:
 2) sections 数量按内容需要决定；目标是让结构更清楚，而不是追求固定段数。
 3) 每段必须有 id 和 heading，可以有 goal。
 4) heading 要像材料里的正式小标题，避免空泛词。
-5) goal 要说清楚这一段想帮助读者理解什么，最好体现“观点 / 论据 / 引述”这一层组织意图，但不要写成长段正文。
+5) goal 要说清楚这一段想帮助读者理解什么。优先参考 working notes 里的 gist、claims、evidence、sparks，体现“观点 / 论据 / 引述”这一层组织意图，但不要写成长段正文。
 6) 不要发明 quotes、actions、memory、segmentation 之类额外结构。
 JSON schema:
 {
@@ -71,9 +84,9 @@ working notes:
    - 原话摘录
    - 对话火花（如果这一段确实有）
 6) body 可以用带提示词的短段落来组织，例如“这一部分在讲什么：……”“主要观点：……”“主要论据与例子：……”“原话摘录：……”。不要写成 markdown 列表，也不要用过多格式符号。
-7) 原话摘录尽量保留说话人；如果 working notes 的 excerpts 里已经带说话人，优先沿用。
+7) 原话摘录尽量保留说话人；如果 working notes 的 evidence 或 sparks 里已经带说话人，优先沿用。
 8) 对话火花只在有价值时保留；不要为了凑格式硬写。
-9) body 尽量用 working notes 里的 bullets 和 excerpts 作为依据，不要发明新事实，不要把弱判断写成强结论。
+9) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论。
 10) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
 JSON schema:
 {
