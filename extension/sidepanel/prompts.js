@@ -77,28 +77,27 @@ working notes:
 1) 只能使用传入的 working notes 和 booklet outline，不得使用外部知识。
 2) sections 顺序必须和 outline 一致。
 3) 每段必须保留 outline 里的 id 和 heading。
-4) body 不要写成一整段泛泛 prose；要写成半结构化材料体，用几个短段落组织清楚内容。你的主要工作是编排和落版，不是重新理解后改写成一篇“顺”的文章。
-5) body 优先包含这些层次，但按内容需要灵活取舍，不要被固定数量绑死：
-   - 这一部分在讲什么
-   - 主要观点
-   - 主要论据与例子
-   - 原话摘录
-   - 关键对话 / 对话火花（如果这一段确实有）
-6) body 可以用带提示词的短段落来组织，例如“这一部分在讲什么：……”“主要观点：……”“主要论据与例子：……”“原话摘录：……”“关键对话：……”。不要写成 markdown 列表，也不要用过多格式符号。
-7) 写每一节时，优先按这个映射使用 working notes：
-   - 用 gist 写“这一部分在讲什么”
-   - 用 claims 写“主要观点”
-   - 用 evidence 写“主要论据与例子”或“原话摘录”
-   - 用 sparks 写“关键对话”“对话火花”或更有记忆点的原话
-8) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
-9) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
-10) “主要论据与例子”不要把原本有魅力的 evidence 全部改写成解释。可以先用一句短说明起头，然后直接保留 1-3 条带 attribution 的原话或近乎原话的引述。
-11) “原话摘录”必须优先保留真正值得记住的原句，不要把 quote 改写成“某人强调……”这种转述。如果 working notes 里已经有很强的 evidence 或 sparks，可以直接搬过来。
-12) 如果 sparks 里保留的是一小段来回对话，优先写成“关键对话：A：…… B：…… C：……”；不要把这段对话再概括成一条结论。
-13) 对话火花只在有价值时保留；不要为了凑格式硬写。但如果某条 sparks 明显更有记忆点，优先保留，不要为了“行文稳”把它抹平。
-14) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
-15) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
-16) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
+4) 不要再把一切都熔进一个 body 字符串里。每节请直接输出半结构化字段，让原话、关键对话和解释分开。
+5) 每节优先包含这些字段，但按内容需要灵活取舍，不要为了凑字段硬写：
+   - intro：这一部分在讲什么
+   - claims：主要观点
+   - evidence：主要论据与例子
+   - quotes：真正值得保留的原话摘录
+   - dialogue：关键对话 / 对话火花（如果这一段确实有）
+6) 写每一节时，优先按这个映射使用 working notes：
+   - 用 gist 写 intro
+   - 用 claims 写 claims
+   - 用 evidence 写 evidence
+   - 用 sparks 写 quotes 或 dialogue
+7) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
+8) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
+9) evidence 不要被全部改写成解释。能直接保留为带 attribution 的原话或近乎原话，就优先保留。
+10) quotes 必须优先保留真正值得记住的原句，不要把 quote 改写成“某人强调……”这种转述。如果 working notes 里已经有很强的 evidence 或 sparks，可以直接搬过来。
+11) dialogue 用来保留一小段来回对话。优先直接保留“谁说了什么”的原貌，不要把这段对话再概括成一条结论。若一段 dialogue 包含多位 speaker，可以把 speaker 留空，把多轮发言直接写进 text。
+12) intro 可以解释，但 quotes 和 dialogue 应尽量保持原话魅力，不要为了“行文稳”把它们抹平。
+13) 不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
+14) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
+15) 不要发明 body、actions、memory、theme id、support refs 之类额外结构。
 JSON schema:
 {
   "title": string,
@@ -106,7 +105,26 @@ JSON schema:
     {
       "id": string,
       "heading": string,
-      "body": string
+      "intro": string,
+      "claims": string[],
+      "evidence": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ],
+      "quotes": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ]
     }
   ]
 }

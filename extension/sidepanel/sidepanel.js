@@ -562,17 +562,80 @@ function renderBookletDraft(draft) {
     const heading = document.createElement("h4");
     heading.textContent = section.heading;
     article.appendChild(heading);
-    const paragraphs = String(section.body || "")
-      .split(/\n{2,}/).map(item => item.replace(/\s+/g, " ").trim()).filter(Boolean);
-    for (const paragraph of paragraphs) {
-      const p = document.createElement("p");
-      p.textContent = paragraph;
-      article.appendChild(p);
+
+    if (section.intro) {
+      const introLabel = document.createElement("div");
+      introLabel.className = "draft-section-label";
+      introLabel.textContent = "这一部分在讲什么";
+      article.appendChild(introLabel);
+
+      const intro = document.createElement("p");
+      intro.className = "draft-section-intro";
+      intro.textContent = section.intro;
+      article.appendChild(intro);
+    }
+
+    if (section.claims?.length) {
+      const claimsLabel = document.createElement("div");
+      claimsLabel.className = "draft-section-label";
+      claimsLabel.textContent = "主要观点";
+      article.appendChild(claimsLabel);
+
+      const claims = document.createElement("ul");
+      claims.className = "draft-section-list";
+      for (const claim of section.claims) {
+        const li = document.createElement("li");
+        li.textContent = claim;
+        claims.appendChild(li);
+      }
+      article.appendChild(claims);
+    }
+
+    if (section.evidence?.length) {
+      article.appendChild(buildDraftSpeakerTextBlock("主要论据与例子", section.evidence, "draft-evidence"));
+    }
+
+    if (section.quotes?.length) {
+      article.appendChild(buildDraftSpeakerTextBlock("原话摘录", section.quotes, "draft-quote"));
+    }
+
+    if (section.dialogue?.length) {
+      article.appendChild(buildDraftSpeakerTextBlock("关键对话", section.dialogue, "draft-dialogue"));
+    }
+
+    if (!section.intro && !section.claims?.length && !section.evidence?.length && !section.quotes?.length && !section.dialogue?.length) {
+      const paragraphs = String(section.body || "")
+        .split(/\n{2,}/).map(item => item.replace(/\s+/g, " ").trim()).filter(Boolean);
+      for (const paragraph of paragraphs) {
+        const p = document.createElement("p");
+        p.textContent = paragraph;
+        article.appendChild(p);
+      }
     }
     elements.bookletDraftSections.appendChild(article);
   }
   elements.bookletDraftEmpty.hidden = true;
   elements.bookletDraftPanel.hidden = false;
+}
+
+function buildDraftSpeakerTextBlock(labelText, entries, toneClass) {
+  const wrapper = document.createElement("div");
+
+  const label = document.createElement("div");
+  label.className = "draft-section-label";
+  label.textContent = labelText;
+  wrapper.appendChild(label);
+
+  const list = document.createElement("div");
+  list.className = "draft-entries";
+  for (const entry of entries) {
+    const block = document.createElement("blockquote");
+    block.className = `draft-entry ${toneClass}`;
+    block.textContent = entry.speaker ? `${entry.speaker}：${entry.text}` : entry.text;
+    list.appendChild(block);
+  }
+  wrapper.appendChild(list);
+  return wrapper;
 }
 
 // -----------------------------------------------------------------------------

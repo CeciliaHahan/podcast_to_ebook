@@ -30,14 +30,53 @@ function paragraphize(input) {
   return normalized.length ? normalized : [String(input || "").replace(/\s+/g, " ").trim()].filter(Boolean);
 }
 
+function formatSpeakerText(entry) {
+  if (!entry?.text) {
+    return "";
+  }
+  return entry.speaker ? `${entry.speaker}：${entry.text}` : entry.text;
+}
+
+function renderEntryBlock(label, entries, variant) {
+  if (!entries?.length) {
+    return "";
+  }
+  return [
+    `<div class="section-label">${escapeXml(label)}</div>`,
+    `<div class="entry-group ${escapeXml(variant)}">`,
+    entries.map((entry) => `<blockquote>${escapeXml(formatSpeakerText(entry))}</blockquote>`).join(""),
+    "</div>",
+  ].join("");
+}
+
+function renderDraftSectionBody(section) {
+  const parts = [];
+  if (section.intro) {
+    parts.push(`<div class="section-label">这一部分在讲什么</div>`);
+    parts.push(...paragraphize(section.intro).map((paragraph) => `<p class="intro">${escapeXml(paragraph)}</p>`));
+  }
+  if (section.claims?.length) {
+    parts.push(`<div class="section-label">主要观点</div>`);
+    parts.push(`<ul>${section.claims.map((claim) => `<li>${escapeXml(claim)}</li>`).join("")}</ul>`);
+  }
+  parts.push(renderEntryBlock("主要论据与例子", section.evidence, "evidence"));
+  parts.push(renderEntryBlock("原话摘录", section.quotes, "quotes"));
+  parts.push(renderEntryBlock("关键对话", section.dialogue, "dialogue"));
+
+  if (!parts.filter(Boolean).length) {
+    return paragraphize(section.body)
+      .map((paragraph) => `<p>${escapeXml(paragraph)}</p>`)
+      .join("");
+  }
+  return parts.filter(Boolean).join("");
+}
+
 function buildChapterFiles(draft) {
   const sections = draft.sections.map((section, index) => ({
     id: section.id || `section_${index + 1}`,
     fileName: `section_${String(index + 1).padStart(2, "0")}.xhtml`,
     title: section.heading,
-    bodyHtml: paragraphize(section.body)
-      .map((paragraph) => `<p>${escapeXml(paragraph)}</p>`)
-      .join(""),
+    bodyHtml: renderDraftSectionBody(section),
   }));
 
   return [
@@ -60,7 +99,15 @@ function buildStyles() {
     "body { font-family: serif; line-height: 1.7; margin: 0 auto; max-width: 42rem; padding: 1.5rem; color: #1f2937; }",
     "h1, h2, h3 { color: #0f172a; line-height: 1.3; }",
     "h2 { margin-top: 0; }",
+    ".section-label { margin: 1rem 0 0.5rem; font-size: 0.8rem; font-weight: 700; color: #0f766e; letter-spacing: 0.02em; }",
+    ".intro { color: #475569; }",
     "p { margin: 0 0 1rem; text-align: justify; }",
+    "ul { margin: 0 0 1rem; padding-left: 1.25rem; }",
+    "li { margin: 0 0 0.45rem; }",
+    ".entry-group { display: grid; gap: 0.6rem; margin: 0 0 1rem; }",
+    ".entry-group blockquote { margin: 0; padding: 0.7rem 0.9rem; border-radius: 0.5rem; border-left: 3px solid #94a3b8; background: #f8fafc; }",
+    ".entry-group.quotes blockquote { background: #eff6ff; border-left-color: #3b82f6; color: #1d4ed8; }",
+    ".entry-group.dialogue blockquote { background: #fff7ed; border-left-color: #f59e0b; color: #9a3412; white-space: pre-wrap; }",
     "ol { padding-left: 1.25rem; }",
   ].join("\n");
 }

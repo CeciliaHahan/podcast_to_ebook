@@ -87,6 +87,10 @@ function cleanBodyText(input, maxLength = 4_000) {
   return text.slice(0, maxLength);
 }
 
+function cleanParagraph(input, maxLength = 800) {
+  return cleanBodyText(input, maxLength);
+}
+
 function readStringList(input, maxItems, maxItemLength) {
   if (!Array.isArray(input)) {
     return [];
@@ -252,11 +256,34 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     }
     const id = cleanLine(item.id, 40) || `section_${index + 1}`;
     const heading = cleanLine(item.heading, 60);
-    const body = cleanBodyText(item.body, 4_000);
-    if (!heading || !body) {
+    const intro = cleanParagraph(item.intro, 800);
+    const claims = readStringList(item.claims, 6, 220);
+    const evidence = readSpeakerTextList(item.evidence, 6, 360);
+    const quotes = readSpeakerTextList(item.quotes, 4, 360);
+    const dialogue = readSpeakerTextList(item.dialogue, 3, 520);
+    const legacyBody = cleanBodyText(item.body, 4_000);
+    const hasStructuredContent = Boolean(intro || claims.length || evidence.length || quotes.length || dialogue.length);
+    if (!heading || (!legacyBody && !hasStructuredContent)) {
       continue;
     }
-    sections.push({ id, heading, body });
+    const section = { id, heading };
+    if (intro) {
+      section.intro = intro;
+    }
+    if (claims.length) {
+      section.claims = claims;
+    }
+    if (evidence.length) {
+      section.evidence = evidence;
+    }
+    if (quotes.length) {
+      section.quotes = quotes;
+    }
+    if (dialogue.length) {
+      section.dialogue = dialogue;
+    }
+    section.body = legacyBody || composeDraftSectionBody(section);
+    sections.push(section);
   }
 
   if (!sections.length) {
@@ -267,6 +294,41 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     title: cleanLine(root.title, 120) || fallbackTitle,
     sections,
   };
+}
+
+function formatSpeakerText(entry) {
+  if (!entry?.text) {
+    return "";
+  }
+  return entry.speaker ? `${entry.speaker}：${entry.text}` : entry.text;
+}
+
+function composeLabeledParagraph(label, lines) {
+  const filtered = lines.map((line) => cleanBodyText(line, 1_200)).filter(Boolean);
+  if (!filtered.length) {
+    return "";
+  }
+  return `${label}：${filtered.join("\n")}`;
+}
+
+function composeDraftSectionBody(section) {
+  const paragraphs = [];
+  if (section.intro) {
+    paragraphs.push(composeLabeledParagraph("这一部分在讲什么", [section.intro]));
+  }
+  if (section.claims?.length) {
+    paragraphs.push(composeLabeledParagraph("主要观点", section.claims.map((claim) => `• ${claim}`)));
+  }
+  if (section.evidence?.length) {
+    paragraphs.push(composeLabeledParagraph("主要论据与例子", section.evidence.map((entry) => `• ${formatSpeakerText(entry)}`)));
+  }
+  if (section.quotes?.length) {
+    paragraphs.push(composeLabeledParagraph("原话摘录", section.quotes.map((entry) => `• ${formatSpeakerText(entry)}`)));
+  }
+  if (section.dialogue?.length) {
+    paragraphs.push(composeLabeledParagraph("关键对话", section.dialogue.map((entry) => formatSpeakerText(entry))));
+  }
+  return paragraphs.filter(Boolean).join("\n\n");
 }
 
 function normalizeBaseUrl(input) {
