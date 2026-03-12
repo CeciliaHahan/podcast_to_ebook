@@ -9,11 +9,12 @@ working notes 只服务于后续结构整理和材料写作，不是最终 ebook
 3) sections 按内容自然分组，不要机械凑固定段数；只要覆盖完整且结构清楚即可。
 4) 每段 section 的 heading 要具体，像一个读者能理解的小标题，而不是空泛主题词。
 5) gist 用 2-4 句说明这一节到底在讲什么，帮助后续写作快速进入这一节。
-6) claims 只放这一节真正核心的判断，不要把例子、寒暄和泛泛总结混进去。
-7) evidence 用来保留支撑 claims 的关键论据、例子或短引述。优先保留 speaker；如果能判断说话人，请填写 speaker。text 必须来自 transcript，不要改写成外部总结。
-8) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、精彩的碰撞。不是每节都必须有，但有价值时优先保留。
-9) 不要发明时间戳、theme id、claim id、utterance id、support refs。
-10) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
+6) claims 只放这一节真正核心的判断，不要把例子、寒暄和泛泛总结混进去。claims 可以概括，但不要偷走原话应该承担的工作。
+7) evidence 用来保留支撑 claims 的关键论据、例子或引述。优先保留 speaker；如果能判断说话人，请填写 speaker。text 必须尽量贴近 transcript 原话，不要把本来精彩的一句话改写成平平的外部总结。
+8) 如果某条论据本身就是一句很有力的话，优先把它作为引述保留下来，而不是只写“某人认为……”。如果一段价值主要来自来回对话，也可以把一小段 2-4 轮对话保存在 evidence 或 sparks 里。
+9) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、精彩的碰撞。不是每节都必须有，但有价值时优先保留。对于多轮对话，可以把 speaker 留空，把多轮发言直接保留在 text 里，例如“教主：…… Plus：…… 嘻哈：……”
+10) 不要发明时间戳、theme id、claim id、utterance id、support refs。
+11) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
 JSON schema:
 {
   "title": string,
@@ -82,20 +83,22 @@ working notes:
    - 主要观点
    - 主要论据与例子
    - 原话摘录
-   - 对话火花（如果这一段确实有）
-6) body 可以用带提示词的短段落来组织，例如“这一部分在讲什么：……”“主要观点：……”“主要论据与例子：……”“原话摘录：……”。不要写成 markdown 列表，也不要用过多格式符号。
+   - 关键对话 / 对话火花（如果这一段确实有）
+6) body 可以用带提示词的短段落来组织，例如“这一部分在讲什么：……”“主要观点：……”“主要论据与例子：……”“原话摘录：……”“关键对话：……”。不要写成 markdown 列表，也不要用过多格式符号。
 7) 写每一节时，优先按这个映射使用 working notes：
    - 用 gist 写“这一部分在讲什么”
    - 用 claims 写“主要观点”
-   - 用 evidence 写“主要论据与例子”
-   - 用 sparks 写“对话火花”或更有记忆点的原话
+   - 用 evidence 写“主要论据与例子”或“原话摘录”
+   - 用 sparks 写“关键对话”“对话火花”或更有记忆点的原话
 8) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
 9) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
-10) 原话摘录尽量保留说话人；如果 working notes 的 evidence 或 sparks 里已经带说话人，优先沿用，不要把带 attribution 的内容改写成无主语旁白。
-11) 对话火花只在有价值时保留；不要为了凑格式硬写。但如果某条 sparks 明显更有记忆点，优先保留，不要为了“行文稳”把它抹平。
-12) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
-13) 写作优先级是：忠实于 notes > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
-14) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
+10) “主要论据与例子”不要把原本有魅力的 evidence 全部改写成解释。可以先用一句短说明起头，然后直接保留 1-3 条带 attribution 的原话或近乎原话的引述。
+11) “原话摘录”必须优先保留真正值得记住的原句，不要把 quote 改写成“某人强调……”这种转述。如果 working notes 里已经有很强的 evidence 或 sparks，可以直接搬过来。
+12) 如果 sparks 里保留的是一小段来回对话，优先写成“关键对话：A：…… B：…… C：……”；不要把这段对话再概括成一条结论。
+13) 对话火花只在有价值时保留；不要为了凑格式硬写。但如果某条 sparks 明显更有记忆点，优先保留，不要为了“行文稳”把它抹平。
+14) body 优先用 working notes 里的 gist、claims、evidence、sparks 作为依据，不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
+15) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
+16) 不要发明 quotes、actions、memory、theme id、support refs 之类额外结构。
 JSON schema:
 {
   "title": string,
