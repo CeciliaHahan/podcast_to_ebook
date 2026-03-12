@@ -181,13 +181,14 @@ function readWorkingNotesFromUnknown(input, fallbackTitle) {
     }
     const heading = cleanLine(item.heading, 60);
     const claims = readStringList(item.claims || item.bullets, 6, 180);
-    const evidence = readSpeakerTextList(item.evidence || item.excerpts, 5, 320);
-    const sparks = readSpeakerTextList(item.sparks, 3, 420);
-    const gist = cleanLine(item.gist, 240) || cleanLine(claims[0] || evidence[0]?.text || sparks[0]?.text, 240);
-    if (!heading || !gist || (!claims.length && !evidence.length && !sparks.length)) {
+    const evidence = readSpeakerTextList(item.evidence || item.excerpts, 6, 320);
+    const dialogue = readSpeakerTextList(item.dialogue, 3, 720);
+    const sparks = readSpeakerTextList(item.sparks, 4, 420);
+    const gist = cleanLine(item.gist, 240) || cleanLine(claims[0] || evidence[0]?.text || dialogue[0]?.text || sparks[0]?.text, 240);
+    if (!heading || !gist || (!claims.length && !evidence.length && !dialogue.length && !sparks.length)) {
       continue;
     }
-    sections.push({ heading, gist, claims, evidence, sparks });
+    sections.push({ heading, gist, claims, evidence, dialogue, sparks });
   }
 
   if (!summary.length || !sections.length) {

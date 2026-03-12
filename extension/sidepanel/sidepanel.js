@@ -495,6 +495,23 @@ function renderWorkingNotes(notes) {
       article.appendChild(evidence);
     }
 
+    if (section.dialogue?.length) {
+      const dialogueLabel = document.createElement("div");
+      dialogueLabel.className = "working-note-subtitle";
+      dialogueLabel.textContent = "关键对话";
+      article.appendChild(dialogueLabel);
+
+      const dialogue = document.createElement("div");
+      dialogue.className = "working-note-excerpts";
+      for (const item of section.dialogue || []) {
+        const block = document.createElement("blockquote");
+        block.className = "working-note-excerpt working-note-dialogue";
+        block.textContent = item.speaker ? `${item.speaker}：${item.text}` : item.text;
+        dialogue.appendChild(block);
+      }
+      article.appendChild(dialogue);
+    }
+
     if (section.sparks?.length) {
       const sparksLabel = document.createElement("div");
       sparksLabel.className = "working-note-subtitle";

@@ -182,6 +182,7 @@ button.icon-btn:hover { background: rgba(0,0,0,0.05); }
 .working-note-section ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; }
 .working-note-excerpts { display: grid; gap: 8px; margin-top: 8px; }
 .working-note-excerpt { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); color: #0f4b46; font-size: 12px; line-height: 1.6; border-left: 3px solid var(--accent); }
+.working-note-dialogue { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; white-space: pre-wrap; }
 .working-note-spark { background: #fff7ed; color: #7c2d12; border-left-color: #f59e0b; }
 .outline-section strong { display: block; margin-bottom: 6px; font-size: 14px; }
 .outline-goal { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; background: #fffaf2; padding: 8px 12px; border-radius: 6px; }

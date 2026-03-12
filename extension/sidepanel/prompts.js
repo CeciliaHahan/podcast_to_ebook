@@ -11,10 +11,11 @@ working notes 只服务于后续结构整理和材料写作，不是最终 ebook
 5) gist 用 2-4 句说明这一节到底在讲什么，帮助后续写作快速进入这一节。
 6) claims 只放这一节真正核心的判断，不要把例子、寒暄和泛泛总结混进去。claims 可以概括，但不要偷走原话应该承担的工作。
 7) evidence 用来保留支撑 claims 的关键论据、例子或引述。优先保留 speaker；如果能判断说话人，请填写 speaker。text 必须尽量贴近 transcript 原话，不要把本来精彩的一句话改写成平平的外部总结。
-8) 如果某条论据本身就是一句很有力的话，优先把它作为引述保留下来，而不是只写“某人认为……”。如果一段价值主要来自来回对话，也可以把一小段 2-4 轮对话保存在 evidence 或 sparks 里。
-9) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、精彩的碰撞。不是每节都必须有，但有价值时优先保留。对于多轮对话，可以把 speaker 留空，把多轮发言直接保留在 text 里，例如“教主：…… Plus：…… 嘻哈：……”
-10) 不要发明时间戳、theme id、claim id、utterance id、support refs。
-11) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
+8) dialogue 用来保留一小段真正值得留下的多轮对话。优先保留 2-4 轮来回接话，而且至少应体现两位 speaker 的来回，不要把单人独白塞进 dialogue。若 dialogue 里有多位 speaker，可以把 speaker 留空，把多轮发言直接保留在 text 里，例如“教主：…… Plus：…… 嘻哈：……”
+9) 如果某条论据本身就是一句很有力的话，优先把它作为引述保留下来，而不是只写“某人认为……”。如果一段价值主要来自来回对话，不要只拆成零散句子，优先放进 dialogue。
+10) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、漂亮的比喻、或单句就很有记忆点的话。不是每节都必须有，但有价值时优先保留。sparks 偏单句火花，dialogue 偏多轮对话。
+11) 不要发明时间戳、theme id、claim id、utterance id、support refs。
+12) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
 JSON schema:
 {
   "title": string,
@@ -25,6 +26,12 @@ JSON schema:
       "gist": string,
       "claims": string[],
       "evidence": [
+        {
+          "speaker": string,
+          "text": string
+        }
+      ],
+      "dialogue": [
         {
           "speaker": string,
           "text": string
@@ -52,7 +59,7 @@ transcript:
 2) sections 数量按内容需要决定；目标是让结构更清楚，而不是追求固定段数。
 3) 每段必须有 id 和 heading，可以有 goal。
 4) heading 要像材料里的正式小标题，避免空泛词。
-5) goal 要说清楚这一段想帮助读者理解什么。优先参考 working notes 里的 gist、claims、evidence、sparks，体现“观点 / 论据 / 引述”这一层组织意图，但不要写成长段正文。
+5) goal 要说清楚这一段想帮助读者理解什么。优先参考 working notes 里的 gist、claims、evidence、dialogue、sparks，体现“观点 / 论据 / 引述 / 对话”这一层组织意图，但不要写成长段正文。
 6) 不要发明 quotes、actions、memory、segmentation 之类额外结构。
 JSON schema:
 {
@@ -88,7 +95,8 @@ working notes:
    - 用 gist 写 intro
    - 用 claims 写 claims
    - 用 evidence 写 evidence
-   - 用 sparks 写 quotes 或 dialogue
+   - 用 sparks 写 quotes
+   - 用 dialogue 写 dialogue
 7) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
 8) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
 9) evidence 不要被全部改写成解释。能直接保留为带 attribution 的原话或近乎原话，就优先保留。
