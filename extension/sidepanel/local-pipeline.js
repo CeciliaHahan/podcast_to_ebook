@@ -511,19 +511,34 @@ function scoreQuoteEntry(entry) {
   const text = formatSpeakerTextEntry(entry);
   const length = cleanLine(text, 500).length;
   const punctuationCount = (text.match(/[！？?!]/g) || []).length;
-  const imageryCueCount = (text.match(/(像|不是|就是|太|真|根本|只要|没办法|凭什么|我不|我就|谁来|海阔天空|悬崖|半扇猪肉|阳气|激情)/g) || []).length;
-  const explanatoryCueCount = (text.match(/(因为|所以|比如|例如|其实|当时|后来|通过|背后|意味着|说明|逻辑|原因)/g) || []).length;
+  const imageryCueCount = (text.match(/(像|不是|就是|太|真|根本|只要|没办法|凭什么|我不|我就|谁来|海阔天空|悬崖|半扇猪肉|阳气|激情|退一步|没招|不穿鞋|找回|毒药|狠角色|rage baiting|great tits)/gi) || []).length;
+  const colloquialCueCount = (text.match(/(我|你|他|她|我们|吧|啊|呀|呢|吗|呗|老子|天哪|真的|太|就)/g) || []).length;
+  const explanatoryCueCount = (text.match(/(因为|所以|比如|例如|其实|当时|后来|通过|背后|意味着|说明|逻辑|原因|背景|场景|经历|故事|大会|学校|广告|播客|品牌|股价|大学|同学|朋友|Taylor|Sydney|American|Alex Clark)/gi) || []).length;
+  const numberCueCount = (text.match(/\d+/g) || []).length;
+  const sentenceCount = String(text).split(/[。！？!?]/).map((item) => item.trim()).filter(Boolean).length;
   let score = 0;
-  if (length >= 18 && length <= 140) {
-    score += 6;
-  } else if (length <= 220) {
-    score += 3;
+  if (length >= 10 && length <= 80) {
+    score += 10;
+  } else if (length <= 120) {
+    score += 7;
+  } else if (length <= 170) {
+    score += 2;
+  } else {
+    score -= 6;
   }
   score += punctuationCount * 2;
   score += imageryCueCount * 2;
-  score -= explanatoryCueCount;
+  score += Math.min(colloquialCueCount, 6);
+  score -= explanatoryCueCount * 2;
+  score -= numberCueCount;
   if (countInlineSpeakerMentions(text) >= 2) {
-    score -= 3;
+    score -= 5;
+  }
+  if (sentenceCount >= 3 && imageryCueCount === 0) {
+    score -= 5;
+  }
+  if (length > 130 && imageryCueCount < 2 && punctuationCount === 0) {
+    score -= 6;
   }
   return score;
 }
@@ -548,24 +563,51 @@ function scoreEvidenceEntry(entry) {
 }
 
 function rebalanceQuoteEntries(quotes, evidence, dialogue) {
-  const rebalancedQuotes = [...(quotes || [])];
-  const availableEvidence = [...(evidence || [])];
-  const referenceEntries = [...(dialogue || []), ...rebalancedQuotes];
-  availableEvidence.sort((left, right) => scoreQuoteEntry(right) - scoreQuoteEntry(left));
-
-  while (rebalancedQuotes.length < 2 && availableEvidence.length) {
-    const candidate = availableEvidence[0];
-    if (scoreQuoteEntry(candidate) < 7 || isEntryCoveredByReference(candidate, referenceEntries)) {
-      break;
+  const targetCount = Math.min(Math.max((quotes || []).length, 1), 4);
+  const candidateMap = new Map();
+  for (const entry of [...(quotes || []), ...(evidence || [])]) {
+    const key = `${entry.speaker || ""}::${entry.text}`;
+    if (!entry?.text || candidateMap.has(key) || isEntryCoveredByReference(entry, dialogue || [])) {
+      continue;
     }
-    rebalancedQuotes.push(candidate);
-    referenceEntries.push(candidate);
-    availableEvidence.shift();
+    candidateMap.set(key, entry);
   }
 
-  return rebalancedQuotes
-    .sort((left, right) => scoreQuoteEntry(right) - scoreQuoteEntry(left))
-    .slice(0, 4);
+  const ranked = [...candidateMap.values()]
+    .map((entry) => ({ entry, score: scoreQuoteEntry(entry) }))
+    .sort((left, right) => right.score - left.score);
+
+  const selected = [];
+  for (const item of ranked) {
+    const minScore = selected.length === 0 ? 9 : 7;
+    if (item.score < minScore) {
+      continue;
+    }
+    selected.push(item.entry);
+    if (selected.length >= targetCount) {
+      break;
+    }
+  }
+
+  if (!selected.length && ranked.length) {
+    selected.push(ranked[0].entry);
+  }
+
+  return dedupeSelectedQuotes(selected).slice(0, 4);
+}
+
+function dedupeSelectedQuotes(entries) {
+  const ranked = [...(entries || [])]
+    .map((entry) => ({ entry, score: scoreQuoteEntry(entry) }))
+    .sort((left, right) => right.score - left.score);
+  const kept = [];
+  for (const item of ranked) {
+    if (isEntryCoveredByReference(item.entry, kept)) {
+      continue;
+    }
+    kept.push(item.entry);
+  }
+  return kept;
 }
 
 function rebalanceEvidenceEntries(evidence, quotes) {
@@ -574,6 +616,46 @@ function rebalanceEvidenceEntries(evidence, quotes) {
   return filtered
     .sort((left, right) => scoreEvidenceEntry(right) - scoreEvidenceEntry(left))
     .slice(0, 6);
+}
+
+function findBestMatchingWorkingNotesSection(draftSection, workingNotesSections, index) {
+  const heading = cleanLine(draftSection?.heading, 60);
+  if (heading) {
+    const exact = (workingNotesSections || []).find((section) => cleanLine(section.heading, 60) === heading);
+    if (exact) {
+      return exact;
+    }
+  }
+  return (workingNotesSections || [])[index] || null;
+}
+
+function enrichDraftQuotesFromWorkingNotes(bookletDraft, workingNotes) {
+  if (!bookletDraft?.sections?.length || !workingNotes?.sections?.length) {
+    return bookletDraft;
+  }
+  return {
+    ...bookletDraft,
+    sections: bookletDraft.sections.map((section, index) => {
+      const noteSection = findBestMatchingWorkingNotesSection(section, workingNotes.sections, index);
+      if (!noteSection) {
+        return section;
+      }
+      const sparkCandidates = readSpeakerTextList(noteSection.sparks, 4, 360);
+      const quoteCandidates = [...(section.quotes || []), ...sparkCandidates];
+      const rebalancedQuotes = rebalanceQuoteEntries(quoteCandidates, section.evidence || [], section.dialogue || []);
+      const rebalancedEvidence = rebalanceEvidenceEntries(section.evidence || [], rebalancedQuotes);
+      return {
+        ...section,
+        evidence: rebalancedEvidence,
+        quotes: rebalancedQuotes,
+        body: composeDraftSectionBody({
+          ...section,
+          evidence: rebalancedEvidence,
+          quotes: rebalancedQuotes,
+        }),
+      };
+    }),
+  };
 }
 
 function readWorkingNotesFromUnknown(input, fallbackTitle) {
@@ -1058,7 +1140,8 @@ export async function createBookletDraftFromOutline(params) {
       }
     }
   }
-  const bookletDraft = applySpeakerMapToDraft(readBookletDraftFromUnknown(result.parsed, params.title), speakerMap);
+  const parsedDraft = applySpeakerMapToDraft(readBookletDraftFromUnknown(result.parsed, params.title), speakerMap);
+  const bookletDraft = enrichDraftQuotesFromWorkingNotes(parsedDraft, params.workingNotes);
   stages[stages.length - 1].output.parse_ok = Boolean(bookletDraft);
 
   if (!bookletDraft) {
