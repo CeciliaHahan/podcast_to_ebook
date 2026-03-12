@@ -14,8 +14,9 @@ working notes 只服务于后续结构整理和材料写作，不是最终 ebook
 8) dialogue 用来保留一小段真正值得留下的多轮对话。优先保留 2-4 轮来回接话，而且至少应体现两位 speaker 的来回，不要把单人独白塞进 dialogue。若 dialogue 里有多位 speaker，可以把 speaker 留空，把多轮发言直接保留在 text 里，例如“教主：…… Plus：…… 嘻哈：……”
 9) 如果某条论据本身就是一句很有力的话，优先把它作为引述保留下来，而不是只写“某人认为……”。如果一段价值主要来自来回对话，不要只拆成零散句子，优先放进 dialogue。
 10) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、漂亮的比喻、或单句就很有记忆点的话。不是每节都必须有，但有价值时优先保留。sparks 偏单句火花，dialogue 偏多轮对话。
-11) 不要发明时间戳、theme id、claim id、utterance id、support refs。
-12) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
+11) 如果 transcript 或 speaker hints 已经暴露真实名字，优先使用真实名字，不要退回“发言人1 / Speaker 1”这类泛标签。只有在名字确实无法判断时，才保留泛标签。
+12) 不要发明时间戳、theme id、claim id、utterance id、support refs。
+13) 不要做额外的分段策略设计；把这次输入当成单次 one-pass transcript 处理。
 JSON schema:
 {
   "title": string,
@@ -47,6 +48,8 @@ JSON schema:
   ]
 }
 上下文：title={{title}}; language={{language}}
+speaker hints:
+{{speakerHints}}
 transcript:
 {{transcriptText}}`,
 

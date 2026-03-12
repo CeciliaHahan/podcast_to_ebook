@@ -91,6 +91,169 @@ function cleanParagraph(input, maxLength = 800) {
   return cleanBodyText(input, maxLength);
 }
 
+function normalizeSpeakerLabel(input) {
+  return cleanLine(input, 40).toLowerCase().replace(/\s+/g, "");
+}
+
+function isLikelySpeakerName(input) {
+  const candidate = cleanLine(input, 24);
+  if (!candidate) {
+    return false;
+  }
+  if (/^[A-Za-z][A-Za-z0-9_-]{0,15}$/.test(candidate)) {
+    return true;
+  }
+  if (!/^[\u4e00-\u9fa5·]{1,8}$/.test(candidate)) {
+    return false;
+  }
+  return candidate.length <= 6;
+}
+
+function parseTranscriptTurns(transcriptText) {
+  const lines = String(transcriptText || "").split(/\r?\n/);
+  const turns = [];
+  let current = null;
+  const headerPattern = /^(发言人\s*\d+|speaker\s*\d+|主持人|嘉宾)\s+(\d{1,2}:\d{2}(?::\d{2})?)\s*$/i;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const match = line.match(headerPattern);
+    if (match) {
+      if (current?.text) {
+        turns.push(current);
+      }
+      current = {
+        label: cleanLine(match[1], 40),
+        timestamp: match[2],
+        text: "",
+      };
+      continue;
+    }
+    if (!current) {
+      continue;
+    }
+    current.text = current.text ? `${current.text} ${line}` : line;
+  }
+  if (current?.text) {
+    turns.push(current);
+  }
+  return turns;
+}
+
+function extractSelfIntroName(text) {
+  const opening = String(text || "").slice(0, 80).trim();
+  const patterns = [
+    /^(?:(?:hello|hi)[，,\s]*)?(?:大家好[，,\s]*)?我(?:是|叫)\s*([A-Za-z\u4e00-\u9fa5·]{1,16})/i,
+    /(?:^|[，,。！？.!?])\s*我(?:是|叫)\s*([A-Za-z\u4e00-\u9fa5·]{1,16})/i,
+    /^(?:大家好[，,\s]*)?我\s*([A-Za-z][A-Za-z0-9_-]{1,15}|[\u4e00-\u9fa5·]{1,12})(?=[，,。！？.!?]|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = opening.match(pattern);
+    if (match && isLikelySpeakerName(match[1])) {
+      return cleanLine(match[1], 24);
+    }
+  }
+  return "";
+}
+
+function buildSpeakerMapFromTranscript(transcriptText) {
+  const turns = parseTranscriptTurns(transcriptText);
+  const resolved = new Map();
+  for (const turn of turns.slice(0, 14)) {
+    const normalizedLabel = normalizeSpeakerLabel(turn.label);
+    if (!normalizedLabel || resolved.has(normalizedLabel)) {
+      continue;
+    }
+    const introName = extractSelfIntroName(turn.text);
+    if (introName) {
+      resolved.set(normalizedLabel, introName);
+    }
+  }
+  return resolved;
+}
+
+function buildSpeakerHintsText(transcriptText) {
+  const speakerMap = buildSpeakerMapFromTranscript(transcriptText);
+  if (!speakerMap.size) {
+    return "未从 transcript 中稳定识别出 speaker 名字。若无法判断，请保留原 speaker 标签。";
+  }
+  return [
+    "以下是从 transcript 初步识别的 speaker hints：",
+    ...[...speakerMap.entries()].map(([label, name]) => `- ${label} -> ${name}`),
+  ].join("\n");
+}
+
+export function previewSpeakerMap(transcriptText) {
+  return Object.fromEntries(buildSpeakerMapFromTranscript(transcriptText));
+}
+
+function replaceInlineSpeakerLabels(text, speakerMap) {
+  if (!text || !speakerMap?.size) {
+    return text || "";
+  }
+  let output = String(text);
+  for (const [label, name] of speakerMap.entries()) {
+    let pattern = null;
+    const speakerDigits = label.match(/^speaker(\d+)$/i);
+    const narratorDigits = label.match(/^发言人(\d+)$/i);
+    if (speakerDigits) {
+      pattern = new RegExp(`speaker\\s*${speakerDigits[1]}`, "gi");
+    } else if (narratorDigits) {
+      pattern = new RegExp(`发言人\\s*${narratorDigits[1]}`, "g");
+    }
+    if (!pattern) {
+      continue;
+    }
+    output = output.replace(pattern, name);
+  }
+  return output;
+}
+
+function applySpeakerMapToSpeakerTextEntries(entries, speakerMap) {
+  return (entries || []).map((entry) => {
+    const normalized = normalizeSpeakerLabel(entry.speaker);
+    const speaker = speakerMap?.get(normalized) || entry.speaker;
+    return {
+      ...(speaker ? { speaker } : {}),
+      text: replaceInlineSpeakerLabels(entry.text, speakerMap),
+    };
+  });
+}
+
+function applySpeakerMapToWorkingNotes(workingNotes, speakerMap) {
+  if (!workingNotes || !speakerMap?.size) {
+    return workingNotes;
+  }
+  return {
+    ...workingNotes,
+    sections: workingNotes.sections.map((section) => ({
+      ...section,
+      evidence: applySpeakerMapToSpeakerTextEntries(section.evidence, speakerMap),
+      dialogue: applySpeakerMapToSpeakerTextEntries(section.dialogue, speakerMap),
+      sparks: applySpeakerMapToSpeakerTextEntries(section.sparks, speakerMap),
+    })),
+  };
+}
+
+function applySpeakerMapToDraft(bookletDraft, speakerMap) {
+  if (!bookletDraft || !speakerMap?.size) {
+    return bookletDraft;
+  }
+  return {
+    ...bookletDraft,
+    sections: bookletDraft.sections.map((section) => ({
+      ...section,
+      evidence: applySpeakerMapToSpeakerTextEntries(section.evidence, speakerMap),
+      quotes: applySpeakerMapToSpeakerTextEntries(section.quotes, speakerMap),
+      dialogue: applySpeakerMapToSpeakerTextEntries(section.dialogue, speakerMap),
+      body: replaceInlineSpeakerLabels(section.body, speakerMap),
+    })),
+  };
+}
+
 function readStringList(input, maxItems, maxItemLength) {
   if (!Array.isArray(input)) {
     return [];
@@ -497,10 +660,13 @@ export async function createWorkingNotesFromTranscript(params) {
 
   const systemPrompt = params.settings.prompts?.wnSystem || DEFAULT_PROMPTS.wnSystem;
   const userTemplate = params.settings.prompts?.wnUser || DEFAULT_PROMPTS.wnUser;
+  const speakerMap = buildSpeakerMapFromTranscript(params.transcriptText);
+  const speakerHints = buildSpeakerHintsText(params.transcriptText);
 
   const prompt = buildPrompt(userTemplate, {
     title: params.title,
     language: params.language,
+    speakerHints,
     transcriptText: params.transcriptText,
   });
 
@@ -511,7 +677,7 @@ export async function createWorkingNotesFromTranscript(params) {
     temperature: params.settings.temperature ?? 0.2,
     pushStage,
   });
-  const workingNotes = readWorkingNotesFromUnknown(result.parsed, params.title);
+  const workingNotes = applySpeakerMapToWorkingNotes(readWorkingNotesFromUnknown(result.parsed, params.title), speakerMap);
   stages[stages.length - 1].output.parse_ok = Boolean(workingNotes);
 
   if (!workingNotes) {
@@ -528,6 +694,7 @@ export async function createWorkingNotesFromTranscript(params) {
       source_type: "transcript",
       source_ref: sourceRef ?? "internal://source-ref",
       generated_at: new Date().toISOString(),
+      speaker_hints: speakerHints,
     },
   };
 }
@@ -630,7 +797,16 @@ export async function createBookletDraftFromOutline(params) {
     temperature: params.settings.temperature ?? 0.3,
     pushStage,
   });
-  const bookletDraft = readBookletDraftFromUnknown(result.parsed, params.title);
+  const speakerMap = new Map();
+  for (const section of params.workingNotes.sections || []) {
+    for (const entry of [...(section.evidence || []), ...(section.dialogue || []), ...(section.sparks || [])]) {
+      const normalized = normalizeSpeakerLabel(entry.speaker);
+      if (normalized && entry.speaker && !/^发言人\d+$/i.test(normalized) && !/^speaker\d+$/i.test(normalized)) {
+        speakerMap.set(normalized, entry.speaker);
+      }
+    }
+  }
+  const bookletDraft = applySpeakerMapToDraft(readBookletDraftFromUnknown(result.parsed, params.title), speakerMap);
   stages[stages.length - 1].output.parse_ok = Boolean(bookletDraft);
 
   if (!bookletDraft) {
