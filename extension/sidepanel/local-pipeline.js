@@ -329,6 +329,81 @@ function readSpeakerTextList(input, maxItems, maxTextLength) {
   return output;
 }
 
+function countInlineSpeakerMentions(text) {
+  const matches = String(text || "").match(/[A-Za-z\u4e00-\u9fa5·]{1,24}[：:]/g);
+  return matches ? matches.length : 0;
+}
+
+function formatSpeakerTextEntry(entry) {
+  if (!entry?.text) {
+    return "";
+  }
+  return entry.speaker ? `${entry.speaker}：${entry.text}` : entry.text;
+}
+
+function looksLikeExchangeBlock(entry) {
+  if (!entry?.text) {
+    return false;
+  }
+  const mentionCount = countInlineSpeakerMentions(entry.text);
+  if (!entry.speaker) {
+    return mentionCount >= 2;
+  }
+  return mentionCount >= 1;
+}
+
+function normalizeDialogueEntries(entries, maxItems = 3) {
+  if (!entries?.length) {
+    return [];
+  }
+  const normalized = [];
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const current = entries[index];
+    if (!current?.text) {
+      continue;
+    }
+
+    if (looksLikeExchangeBlock(current)) {
+      const text = current.speaker && !current.text.startsWith(`${current.speaker}：`) && !current.text.startsWith(`${current.speaker}:`)
+        ? `${current.speaker}：${current.text}`
+        : current.text;
+      normalized.push({ text: cleanLine(text, 720) });
+      continue;
+    }
+
+    const next = entries[index + 1];
+    const nextSpeaker = normalizeSpeakerLabel(next?.speaker);
+    const currentSpeaker = normalizeSpeakerLabel(current.speaker);
+    const canMergePair =
+      next?.text &&
+      currentSpeaker &&
+      nextSpeaker &&
+      currentSpeaker !== nextSpeaker &&
+      !looksLikeExchangeBlock(next);
+
+    if (canMergePair) {
+      const merged = `${formatSpeakerTextEntry(current)} ${formatSpeakerTextEntry(next)}`;
+      const third = entries[index + 2];
+      const thirdSpeaker = normalizeSpeakerLabel(third?.speaker);
+      const canMergeThird =
+        third?.text &&
+        thirdSpeaker &&
+        thirdSpeaker !== currentSpeaker &&
+        thirdSpeaker !== nextSpeaker &&
+        !looksLikeExchangeBlock(third);
+      const mergedText = canMergeThird ? `${merged} ${formatSpeakerTextEntry(third)}` : merged;
+      normalized.push({ text: cleanLine(mergedText, 720) });
+      index += canMergeThird ? 2 : 1;
+      continue;
+    }
+
+    normalized.push(current.speaker ? { speaker: current.speaker, text: current.text } : { text: current.text });
+  }
+
+  return normalized.slice(0, maxItems);
+}
+
 function readWorkingNotesFromUnknown(input, fallbackTitle) {
   if (!input || typeof input !== "object") {
     return null;
@@ -345,7 +420,7 @@ function readWorkingNotesFromUnknown(input, fallbackTitle) {
     const heading = cleanLine(item.heading, 60);
     const claims = readStringList(item.claims || item.bullets, 6, 180);
     const evidence = readSpeakerTextList(item.evidence || item.excerpts, 6, 320);
-    const dialogue = readSpeakerTextList(item.dialogue, 3, 720);
+    const dialogue = normalizeDialogueEntries(readSpeakerTextList(item.dialogue, 4, 720), 3);
     const sparks = readSpeakerTextList(item.sparks, 4, 420);
     const gist = cleanLine(item.gist, 240) || cleanLine(claims[0] || evidence[0]?.text || dialogue[0]?.text || sparks[0]?.text, 240);
     if (!heading || !gist || (!claims.length && !evidence.length && !dialogue.length && !sparks.length)) {
