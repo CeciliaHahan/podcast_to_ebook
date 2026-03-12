@@ -13,6 +13,7 @@ working notes 只服务于后续结构整理和材料写作，不是最终 ebook
 7) evidence 用来保留支撑 claims 的关键论据、例子或引述。优先保留 speaker；如果能判断说话人，请填写 speaker。text 必须尽量贴近 transcript 原话，不要把本来精彩的一句话改写成平平的外部总结。
 8) dialogue 用来保留一小段真正值得留下的多轮对话。优先保留 2-4 轮来回接话，而且至少应体现两位 speaker 的来回，不要把单人独白塞进 dialogue。
 8.1) dialogue 的每一项都应该是一个完整的 exchange block，而不是一人一句拆开存。优先把 speaker 留空，把多轮发言直接连续保留在 text 里，例如“教主：…… Plus：…… 嘻哈：……”。如果你把一段对话拆成多个 item，后续会更容易失真。
+8.2) dialogue 优先保留真正有互动感的片段：追问、回应、接梗、补强、翻转、反驳、互相吐槽。不要只因为两个人都在说同一个主题，就把两段相关发言并排塞进 dialogue。
 9) 如果某条论据本身就是一句很有力的话，优先把它作为引述保留下来，而不是只写“某人认为……”。如果一段价值主要来自来回对话，不要只拆成零散句子，优先放进 dialogue。
 10) sparks 用来保留特别值得留下的表达，例如好笑的话、锋利的判断、漂亮的比喻、或单句就很有记忆点的话。不是每节都必须有，但有价值时优先保留。sparks 偏单句火花，dialogue 偏多轮对话。
 11) 如果 transcript 或 speaker hints 已经暴露真实名字，优先使用真实名字，不要退回“发言人1 / Speaker 1”这类泛标签。只有在名字确实无法判断时，才保留泛标签。
@@ -105,7 +106,7 @@ working notes:
 8) evidence 如果来自不同 speaker，且这些 speaker 代表不同角度、补充或回应，不要把它们压成匿名共识；尽量明确是谁提供了哪种论据或例子。
 9) evidence 不要被全部改写成解释。能直接保留为带 attribution 的原话或近乎原话，就优先保留。
 10) quotes 必须优先保留真正值得记住的原句，不要把 quote 改写成“某人强调……”这种转述。如果 working notes 里已经有很强的 evidence 或 sparks，可以直接搬过来。
-11) dialogue 用来保留一小段来回对话。优先直接保留“谁说了什么”的原貌，不要把这段对话再概括成一条结论。每个 dialogue item 最好就是一个完整 exchange block；若一段 dialogue 包含多位 speaker，优先把 speaker 留空，把多轮发言直接写进 text。
+11) dialogue 用来保留一小段来回对话。优先直接保留“谁说了什么”的原貌，不要把这段对话再概括成一条结论。每个 dialogue item 最好就是一个完整 exchange block；若一段 dialogue 包含多位 speaker，优先把 speaker 留空，把多轮发言直接写进 text。优先选追问、回应、接梗、补强、翻转、反驳这些高互动片段。
 12) intro 可以解释，但 quotes 和 dialogue 应尽量保持原话魅力，不要为了“行文稳”把它们抹平。
 13) 不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
 14) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。

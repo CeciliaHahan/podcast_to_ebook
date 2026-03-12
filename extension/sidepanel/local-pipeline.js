@@ -401,7 +401,65 @@ function normalizeDialogueEntries(entries, maxItems = 3) {
     normalized.push(current.speaker ? { speaker: current.speaker, text: current.text } : { text: current.text });
   }
 
-  return normalized.slice(0, maxItems);
+  return selectStrongDialogueEntries(normalized, maxItems);
+}
+
+function extractInlineSpeakerNames(text) {
+  const matches = [...String(text || "").matchAll(/([A-Za-z\u4e00-\u9fa5·]{1,24})[：:]/g)];
+  const unique = [];
+  const seen = new Set();
+  for (const match of matches) {
+    const speaker = cleanLine(match[1], 24);
+    if (!speaker || seen.has(speaker)) {
+      continue;
+    }
+    seen.add(speaker);
+    unique.push(speaker);
+  }
+  return unique;
+}
+
+function scoreDialogueEntry(entry) {
+  const text = formatSpeakerTextEntry(entry);
+  const speakers = extractInlineSpeakerNames(text);
+  const turnCount = countInlineSpeakerMentions(text);
+  const questionCount = (text.match(/[？?]/g) || []).length;
+  const responseCueCount =
+    (text.match(/(^|[。！？!?，,\s])(对|对啊|对呀|是的|没错|所以|但是|可是|那也|然后|结果|因为|什么意思|怎么|为什么|凭什么|我觉得|你说|我说)/g) || []).length;
+  const humorCueCount = (text.match(/(哈哈|笑|梗|太吓人了|那也不能|不可能吧|这句话咋了)/g) || []).length;
+  const contradictionCueCount = (text.match(/(不是|不对|但|但是|可是|凭什么|不可能|我不|我就不|你退一步|谁来解决)/g) || []).length;
+
+  let score = 0;
+  score += Math.min(speakers.length, 4) * 4;
+  score += Math.min(turnCount, 5) * 2;
+  score += questionCount * 3;
+  score += responseCueCount * 2;
+  score += humorCueCount * 2;
+  score += contradictionCueCount * 2;
+
+  if (speakers.length >= 2 && turnCount >= 3) {
+    score += 4;
+  }
+  if (speakers.length >= 3) {
+    score += 2;
+  }
+  if (speakers.length >= 2 && questionCount === 0 && responseCueCount === 0 && contradictionCueCount === 0 && humorCueCount === 0) {
+    score -= 4;
+  }
+  return score;
+}
+
+function selectStrongDialogueEntries(entries, maxItems = 3) {
+  if (!entries?.length) {
+    return [];
+  }
+  const ranked = entries
+    .map((entry, index) => ({ entry, index, score: scoreDialogueEntry(entry) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, maxItems)
+    .sort((left, right) => left.index - right.index)
+    .map((item) => item.entry);
+  return ranked;
 }
 
 function canonicalizeEntryText(input) {
