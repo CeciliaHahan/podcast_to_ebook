@@ -499,11 +499,81 @@ function dedupeDraftEntryBuckets(evidence, quotes, dialogue) {
     filteredEvidence.push(entry);
   }
 
+  const rebalancedQuotes = rebalanceQuoteEntries(filteredQuotes, filteredEvidence, normalizedDialogue);
   return {
-    evidence: filteredEvidence.slice(0, 6),
-    quotes: filteredQuotes.slice(0, 4),
+    evidence: rebalanceEvidenceEntries(filteredEvidence, rebalancedQuotes),
+    quotes: rebalancedQuotes,
     dialogue: normalizedDialogue,
   };
+}
+
+function scoreQuoteEntry(entry) {
+  const text = formatSpeakerTextEntry(entry);
+  const length = cleanLine(text, 500).length;
+  const punctuationCount = (text.match(/[！？?!]/g) || []).length;
+  const imageryCueCount = (text.match(/(像|不是|就是|太|真|根本|只要|没办法|凭什么|我不|我就|谁来|海阔天空|悬崖|半扇猪肉|阳气|激情)/g) || []).length;
+  const explanatoryCueCount = (text.match(/(因为|所以|比如|例如|其实|当时|后来|通过|背后|意味着|说明|逻辑|原因)/g) || []).length;
+  let score = 0;
+  if (length >= 18 && length <= 140) {
+    score += 6;
+  } else if (length <= 220) {
+    score += 3;
+  }
+  score += punctuationCount * 2;
+  score += imageryCueCount * 2;
+  score -= explanatoryCueCount;
+  if (countInlineSpeakerMentions(text) >= 2) {
+    score -= 3;
+  }
+  return score;
+}
+
+function scoreEvidenceEntry(entry) {
+  const text = formatSpeakerTextEntry(entry);
+  const length = cleanLine(text, 500).length;
+  const explanationCueCount = (text.match(/(因为|所以|比如|例如|其实|当时|后来|通过|背后|意味着|说明|逻辑|原因|结果|然后|具体|场景|经历|故事)/g) || []).length;
+  const detailCueCount = (text.match(/(\d+|American|Sydney|Taylor|学校|广告|播客|领导|同学|朋友|大会|杂志|牛仔裤|避孕药|密室|专场)/g) || []).length;
+  let score = 0;
+  if (length >= 40 && length <= 280) {
+    score += 5;
+  } else if (length > 280) {
+    score += 2;
+  }
+  score += explanationCueCount * 2;
+  score += Math.min(detailCueCount, 4);
+  if (countInlineSpeakerMentions(text) >= 2) {
+    score -= 4;
+  }
+  return score;
+}
+
+function rebalanceQuoteEntries(quotes, evidence, dialogue) {
+  const rebalancedQuotes = [...(quotes || [])];
+  const availableEvidence = [...(evidence || [])];
+  const referenceEntries = [...(dialogue || []), ...rebalancedQuotes];
+  availableEvidence.sort((left, right) => scoreQuoteEntry(right) - scoreQuoteEntry(left));
+
+  while (rebalancedQuotes.length < 2 && availableEvidence.length) {
+    const candidate = availableEvidence[0];
+    if (scoreQuoteEntry(candidate) < 7 || isEntryCoveredByReference(candidate, referenceEntries)) {
+      break;
+    }
+    rebalancedQuotes.push(candidate);
+    referenceEntries.push(candidate);
+    availableEvidence.shift();
+  }
+
+  return rebalancedQuotes
+    .sort((left, right) => scoreQuoteEntry(right) - scoreQuoteEntry(left))
+    .slice(0, 4);
+}
+
+function rebalanceEvidenceEntries(evidence, quotes) {
+  const quoteSet = new Set((quotes || []).map((entry) => `${entry.speaker || ""}::${entry.text}`));
+  const filtered = (evidence || []).filter((entry) => !quoteSet.has(`${entry.speaker || ""}::${entry.text}`));
+  return filtered
+    .sort((left, right) => scoreEvidenceEntry(right) - scoreEvidenceEntry(left))
+    .slice(0, 6);
 }
 
 function readWorkingNotesFromUnknown(input, fallbackTitle) {
