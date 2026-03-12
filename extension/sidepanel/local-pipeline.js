@@ -404,6 +404,50 @@ function normalizeDialogueEntries(entries, maxItems = 3) {
   return normalized.slice(0, maxItems);
 }
 
+function canonicalizeEntryText(input) {
+  return String(input || "")
+    .replace(/[A-Za-z\u4e00-\u9fa5·]{1,24}[：:]/g, " ")
+    .replace(/[“”"'`（）()【】\[\]….,，。！？!?:：；;\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isEntryCoveredByReference(entry, references) {
+  const candidate = canonicalizeEntryText(formatSpeakerTextEntry(entry));
+  if (!candidate || candidate.length < 12) {
+    return false;
+  }
+  return references.some((reference) => {
+    const normalizedReference = canonicalizeEntryText(formatSpeakerTextEntry(reference));
+    return normalizedReference.includes(candidate) || candidate.includes(normalizedReference);
+  });
+}
+
+function dedupeDraftEntryBuckets(evidence, quotes, dialogue) {
+  const normalizedDialogue = normalizeDialogueEntries(dialogue, 3);
+  const filteredQuotes = [];
+  for (const entry of quotes || []) {
+    if (!isEntryCoveredByReference(entry, normalizedDialogue)) {
+      filteredQuotes.push(entry);
+    }
+  }
+
+  const filteredEvidence = [];
+  for (const entry of evidence || []) {
+    if (isEntryCoveredByReference(entry, normalizedDialogue) || isEntryCoveredByReference(entry, filteredQuotes)) {
+      continue;
+    }
+    filteredEvidence.push(entry);
+  }
+
+  return {
+    evidence: filteredEvidence.slice(0, 6),
+    quotes: filteredQuotes.slice(0, 4),
+    dialogue: normalizedDialogue,
+  };
+}
+
 function readWorkingNotesFromUnknown(input, fallbackTitle) {
   if (!input || typeof input !== "object") {
     return null;
@@ -497,9 +541,14 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     const heading = cleanLine(item.heading, 60);
     const intro = cleanParagraph(item.intro, 800);
     const claims = readStringList(item.claims, 6, 220);
-    const evidence = readSpeakerTextList(item.evidence, 6, 360);
-    const quotes = readSpeakerTextList(item.quotes, 4, 360);
-    const dialogue = readSpeakerTextList(item.dialogue, 3, 520);
+    const buckets = dedupeDraftEntryBuckets(
+      readSpeakerTextList(item.evidence, 6, 360),
+      readSpeakerTextList(item.quotes, 4, 360),
+      readSpeakerTextList(item.dialogue, 4, 720),
+    );
+    const evidence = buckets.evidence;
+    const quotes = buckets.quotes;
+    const dialogue = buckets.dialogue;
     const legacyBody = cleanBodyText(item.body, 4_000);
     const hasStructuredContent = Boolean(intro || claims.length || evidence.length || quotes.length || dialogue.length);
     if (!heading || (!legacyBody && !hasStructuredContent)) {
