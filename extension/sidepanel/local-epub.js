@@ -49,17 +49,37 @@ function renderEntryBlock(label, entries, variant) {
   ].join("");
 }
 
+function renderArgumentPyramid(section) {
+  if (!section.claims?.length && !section.evidence?.length) {
+    return "";
+  }
+  const parts = [`<div class="section-label">主要观点与论据</div>`, `<div class="argument-group">`];
+  if (section.claims?.length) {
+    parts.push(`<div class="argument-subtitle">主要观点</div>`);
+    parts.push(`<ul class="argument-list claims">${section.claims.map((claim) => `<li>${escapeXml(claim)}</li>`).join("")}</ul>`);
+  }
+  if (section.evidence?.length) {
+    parts.push(`<div class="argument-subtitle">论据与例子</div>`);
+    parts.push(
+      `<ul class="argument-list evidence">${section.evidence
+        .map(
+          (entry) =>
+            `<li>${entry.speaker ? `<span class="argument-speaker">${escapeXml(entry.speaker)}：</span>` : ""}${escapeXml(entry.text || "")}</li>`,
+        )
+        .join("")}</ul>`,
+    );
+  }
+  parts.push(`</div>`);
+  return parts.join("");
+}
+
 function renderDraftSectionBody(section) {
   const parts = [];
   if (section.intro) {
     parts.push(`<div class="section-label">这一部分在讲什么</div>`);
     parts.push(...paragraphize(section.intro).map((paragraph) => `<p class="intro">${escapeXml(paragraph)}</p>`));
   }
-  if (section.claims?.length) {
-    parts.push(`<div class="section-label">主要观点</div>`);
-    parts.push(`<ul>${section.claims.map((claim) => `<li>${escapeXml(claim)}</li>`).join("")}</ul>`);
-  }
-  parts.push(renderEntryBlock("主要论据与例子", section.evidence, "evidence"));
+  parts.push(renderArgumentPyramid(section));
   parts.push(renderEntryBlock("原话摘录", section.quotes, "quotes"));
   parts.push(renderEntryBlock("关键对话", section.dialogue, "dialogue"));
 
@@ -104,6 +124,13 @@ function buildStyles() {
     "p { margin: 0 0 1rem; text-align: justify; }",
     "ul { margin: 0 0 1rem; padding-left: 1.25rem; }",
     "li { margin: 0 0 0.45rem; }",
+    ".argument-group { margin: 0 0 1rem; padding: 0.95rem 1rem; border-radius: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; }",
+    ".argument-subtitle { margin: 0 0 0.45rem; font-size: 0.82rem; font-weight: 700; color: #334155; }",
+    ".argument-subtitle + .argument-list { margin-top: 0; }",
+    ".argument-list { margin-bottom: 0.85rem; }",
+    ".argument-list:last-child { margin-bottom: 0; }",
+    ".argument-list.evidence li { color: #334155; }",
+    ".argument-speaker { font-weight: 700; color: #0f172a; }",
     ".entry-group { display: grid; gap: 0.6rem; margin: 0 0 1rem; }",
     ".entry-group blockquote { margin: 0; padding: 0.7rem 0.9rem; border-radius: 0.5rem; border-left: 3px solid #94a3b8; background: #f8fafc; }",
     ".entry-group.quotes blockquote { background: #eff6ff; border-left-color: #3b82f6; color: #1d4ed8; }",

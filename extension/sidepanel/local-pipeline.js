@@ -814,11 +814,17 @@ function composeDraftSectionBody(section) {
   if (section.intro) {
     paragraphs.push(composeLabeledParagraph("这一部分在讲什么", [section.intro]));
   }
-  if (section.claims?.length) {
-    paragraphs.push(composeLabeledParagraph("主要观点", section.claims.map((claim) => `• ${claim}`)));
-  }
-  if (section.evidence?.length) {
-    paragraphs.push(composeLabeledParagraph("主要论据与例子", section.evidence.map((entry) => `• ${formatSpeakerText(entry)}`)));
+  if (section.claims?.length || section.evidence?.length) {
+    const lines = [];
+    if (section.claims?.length) {
+      lines.push("主要观点");
+      lines.push(...section.claims.map((claim) => `• ${claim}`));
+    }
+    if (section.evidence?.length) {
+      lines.push("论据与例子");
+      lines.push(...section.evidence.map((entry) => `• ${formatSpeakerText(entry)}`));
+    }
+    paragraphs.push(composeLabeledParagraph("主要观点与论据", lines));
   }
   if (section.quotes?.length) {
     paragraphs.push(composeLabeledParagraph("原话摘录", section.quotes.map((entry) => `• ${formatSpeakerText(entry)}`)));
