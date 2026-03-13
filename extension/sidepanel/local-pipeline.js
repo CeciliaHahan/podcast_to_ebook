@@ -854,6 +854,12 @@ function countInteractionSignals(lines) {
   return patterns.reduce((count, pattern) => count + (pattern.test(joined) ? 1 : 0), 0);
 }
 
+// We distinguish two section shapes at the draft layer:
+// 1) argument-driven sections: the value is mainly in a claim + support + boundary structure.
+//    These sections render better as "主要观点 / 为什么这么说 / 但也要看到".
+// 2) situational sections: the value is mainly in scenes, anecdotes, reactions, and relationships.
+//    These sections render better as "主要观点 / 主要论据与例子".
+// The split is section-level, not episode-level, because one episode can contain both shapes.
 function shouldUseContrastStructure(section) {
   const claimsCount = (section.claims || []).length;
   const whyCount = (section.why || []).length;
@@ -874,6 +880,9 @@ function shouldUseContrastStructure(section) {
 }
 
 function applySectionStructureMode(section) {
+  // If a section is not argument-driven enough, we collapse support back into
+  // a broader evidence bucket so story-heavy or personality-heavy material
+  // does not get forced into an over-analytical shape.
   if (shouldUseContrastStructure(section)) {
     return {
       ...section,
