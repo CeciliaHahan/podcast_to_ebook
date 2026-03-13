@@ -50,7 +50,7 @@ function renderEntryBlock(label, entries, variant) {
 }
 
 function renderArgumentPyramid(section) {
-  if (!section.claims?.length && !section.why?.length && !section.butAlso?.length && !section.evidence?.length) {
+  if (!section.claims?.length && !section.why?.length && !section.butAlso?.length) {
     return "";
   }
   const parts = [`<div class="section-label">主要观点与论据</div>`, `<div class="argument-group">`];
@@ -65,17 +65,6 @@ function renderArgumentPyramid(section) {
   if (section.butAlso?.length) {
     parts.push(`<div class="argument-subtitle">但也要看到</div>`);
     parts.push(`<ul class="argument-list but-also">${section.butAlso.map((item) => `<li>${escapeXml(item)}</li>`).join("")}</ul>`);
-  }
-  if (section.evidence?.length) {
-    parts.push(`<div class="argument-subtitle">论据与例子</div>`);
-    parts.push(
-      `<ul class="argument-list evidence">${section.evidence
-        .map(
-          (entry) =>
-            `<li>${entry.speaker ? `<span class="argument-speaker">${escapeXml(entry.speaker)}：</span>` : ""}${escapeXml(entry.text || "")}</li>`,
-        )
-        .join("")}</ul>`,
-    );
   }
   parts.push(`</div>`);
   return parts.join("");
@@ -139,8 +128,6 @@ function buildStyles() {
     ".argument-list:last-child { margin-bottom: 0; }",
     ".argument-list.why li { color: #334155; }",
     ".argument-list.but-also li { color: #475569; }",
-    ".argument-list.evidence li { color: #334155; }",
-    ".argument-speaker { font-weight: 700; color: #0f172a; }",
     ".entry-group { display: grid; gap: 0.6rem; margin: 0 0 1rem; }",
     ".entry-group blockquote { margin: 0; padding: 0.7rem 0.9rem; border-radius: 0.5rem; border-left: 3px solid #94a3b8; background: #f8fafc; }",
     ".entry-group.quotes blockquote { background: #eff6ff; border-left-color: #3b82f6; color: #1d4ed8; }",

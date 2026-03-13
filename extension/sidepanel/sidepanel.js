@@ -536,7 +536,7 @@ function buildWorkingNoteArgumentBlock(section) {
   if (section.evidence?.length) {
     const evidenceLabel = document.createElement("div");
     evidenceLabel.className = "working-note-argument-subtitle";
-    evidenceLabel.textContent = "论据与例子";
+    evidenceLabel.textContent = "为什么这么说";
     card.appendChild(evidenceLabel);
 
     const evidence = document.createElement("ul");
@@ -616,7 +616,7 @@ function renderBookletDraft(draft) {
       article.appendChild(intro);
     }
 
-    if (section.claims?.length || section.evidence?.length) {
+    if (section.claims?.length || section.why?.length || section.butAlso?.length) {
       article.appendChild(buildDraftArgumentBlock(section));
     }
 
@@ -628,7 +628,7 @@ function renderBookletDraft(draft) {
       article.appendChild(buildDraftSpeakerTextBlock("关键对话", section.dialogue, "draft-dialogue"));
     }
 
-    if (!section.intro && !section.claims?.length && !section.evidence?.length && !section.quotes?.length && !section.dialogue?.length) {
+    if (!section.intro && !section.claims?.length && !section.why?.length && !section.butAlso?.length && !section.quotes?.length && !section.dialogue?.length) {
       const paragraphs = String(section.body || "")
         .split(/\n{2,}/).map(item => item.replace(/\s+/g, " ").trim()).filter(Boolean);
       for (const paragraph of paragraphs) {
@@ -720,28 +720,6 @@ function buildDraftArgumentBlock(section) {
       butAlso.appendChild(li);
     }
     card.appendChild(butAlso);
-  }
-
-  if (section.evidence?.length) {
-    const evidenceLabel = document.createElement("div");
-    evidenceLabel.className = "draft-argument-subtitle";
-    evidenceLabel.textContent = "论据与例子";
-    card.appendChild(evidenceLabel);
-
-    const evidence = document.createElement("ul");
-    evidence.className = "draft-section-list draft-argument-list draft-evidence-list";
-    for (const entry of section.evidence) {
-      const li = document.createElement("li");
-      if (entry.speaker) {
-        const speaker = document.createElement("strong");
-        speaker.className = "draft-evidence-speaker";
-        speaker.textContent = `${entry.speaker}：`;
-        li.appendChild(speaker);
-      }
-      li.appendChild(document.createTextNode(entry.text || ""));
-      evidence.appendChild(li);
-    }
-    card.appendChild(evidence);
   }
 
   wrapper.appendChild(card);

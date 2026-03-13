@@ -762,7 +762,8 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     const quotes = buckets.quotes;
     const dialogue = buckets.dialogue;
     const legacyBody = cleanBodyText(item.body, 4_000);
-    const hasStructuredContent = Boolean(intro || claims.length || why.length || butAlso.length || evidence.length || quotes.length || dialogue.length);
+    const supportLines = mergeSupportLines(why, evidence);
+    const hasStructuredContent = Boolean(intro || claims.length || supportLines.length || butAlso.length || quotes.length || dialogue.length);
     if (!heading || (!legacyBody && !hasStructuredContent)) {
       continue;
     }
@@ -773,14 +774,11 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     if (claims.length) {
       section.claims = claims;
     }
-    if (why.length) {
-      section.why = why;
+    if (supportLines.length) {
+      section.why = supportLines;
     }
     if (butAlso.length) {
       section.butAlso = butAlso;
-    }
-    if (evidence.length) {
-      section.evidence = evidence;
     }
     if (quotes.length) {
       section.quotes = quotes;
@@ -809,6 +807,30 @@ function formatSpeakerText(entry) {
   return entry.speaker ? `${entry.speaker}：${entry.text}` : entry.text;
 }
 
+function mergeSupportLines(why, evidence) {
+  const merged = [];
+  const seen = new Set();
+  for (const item of why || []) {
+    const line = cleanParagraph(item, 260);
+    const key = line.toLowerCase();
+    if (!line || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(line);
+  }
+  for (const entry of evidence || []) {
+    const line = cleanParagraph(formatSpeakerText(entry), 360);
+    const key = line.toLowerCase();
+    if (!line || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(line);
+  }
+  return merged.slice(0, 6);
+}
+
 function composeLabeledParagraph(label, lines) {
   const filtered = lines.map((line) => cleanBodyText(line, 1_200)).filter(Boolean);
   if (!filtered.length) {
@@ -822,7 +844,7 @@ function composeDraftSectionBody(section) {
   if (section.intro) {
     paragraphs.push(composeLabeledParagraph("这一部分在讲什么", [section.intro]));
   }
-  if (section.claims?.length || section.why?.length || section.butAlso?.length || section.evidence?.length) {
+  if (section.claims?.length || section.why?.length || section.butAlso?.length) {
     const lines = [];
     if (section.claims?.length) {
       lines.push("主要观点");
@@ -835,10 +857,6 @@ function composeDraftSectionBody(section) {
     if (section.butAlso?.length) {
       lines.push("但也要看到");
       lines.push(...section.butAlso.map((item) => `• ${item}`));
-    }
-    if (section.evidence?.length) {
-      lines.push("论据与例子");
-      lines.push(...section.evidence.map((entry) => `• ${formatSpeakerText(entry)}`));
     }
     paragraphs.push(composeLabeledParagraph("主要观点与论据", lines));
   }

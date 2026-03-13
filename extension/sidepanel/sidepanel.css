@@ -199,8 +199,6 @@ button.icon-btn:hover { background: rgba(0,0,0,0.05); }
 .draft-argument-list { margin: 0; }
 .draft-why-list { color: #334155; }
 .draft-but-also-list { color: #475569; }
-.draft-evidence-list { color: #334155; }
-.draft-evidence-speaker { color: #0f172a; }
 .draft-entries { display: grid; gap: 8px; }
 .draft-entry { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.7; border-left: 3px solid var(--accent); background: #f8fafc; color: var(--ink); }
 .draft-evidence { background: #f8fafc; color: #1f2937; border-left-color: #94a3b8; }
