@@ -643,19 +643,20 @@ function enrichDraftQuotesFromWorkingNotes(bookletDraft, workingNotes) {
       if (!noteSection) {
         return section;
       }
+      const stableClaims = readStringList(noteSection.claims, 6, 220);
       const sparkCandidates = readSpeakerTextList(noteSection.sparks, 4, 360);
       const quoteCandidates = [...(section.quotes || []), ...sparkCandidates];
       const rebalancedQuotes = rebalanceQuoteEntries(quoteCandidates, section.evidence || [], section.dialogue || []);
       const rebalancedEvidence = rebalanceEvidenceEntries(section.evidence || [], rebalancedQuotes);
-      return {
+      const nextSection = {
         ...section,
+        ...(stableClaims.length ? { claims: stableClaims } : {}),
         evidence: rebalancedEvidence,
         quotes: rebalancedQuotes,
-        body: composeDraftSectionBody({
-          ...section,
-          evidence: rebalancedEvidence,
-          quotes: rebalancedQuotes,
-        }),
+      };
+      return {
+        ...nextSection,
+        body: composeDraftSectionBody(nextSection),
       };
     }),
   };
