@@ -463,36 +463,8 @@ function renderWorkingNotes(notes) {
       article.appendChild(gist);
     }
 
-    if (section.claims?.length) {
-      const claimsLabel = document.createElement("div");
-      claimsLabel.className = "working-note-subtitle";
-      claimsLabel.textContent = "主要观点";
-      article.appendChild(claimsLabel);
-
-      const claims = document.createElement("ul");
-      for (const claim of section.claims || []) {
-        const li = document.createElement("li");
-        li.textContent = claim;
-        claims.appendChild(li);
-      }
-      article.appendChild(claims);
-    }
-
-    if (section.evidence?.length) {
-      const evidenceLabel = document.createElement("div");
-      evidenceLabel.className = "working-note-subtitle";
-      evidenceLabel.textContent = "主要论据与例子";
-      article.appendChild(evidenceLabel);
-
-      const evidence = document.createElement("div");
-      evidence.className = "working-note-excerpts";
-      for (const item of section.evidence || []) {
-        const block = document.createElement("blockquote");
-        block.className = "working-note-excerpt";
-        block.textContent = item.speaker ? `${item.speaker}：${item.text}` : item.text;
-        evidence.appendChild(block);
-      }
-      article.appendChild(evidence);
+    if (section.claims?.length || section.evidence?.length) {
+      article.appendChild(buildWorkingNoteArgumentBlock(section));
     }
 
     if (section.dialogue?.length) {
@@ -533,6 +505,58 @@ function renderWorkingNotes(notes) {
   }
   elements.workingNotesEmpty.hidden = true;
   elements.workingNotesPanel.hidden = false;
+}
+
+function buildWorkingNoteArgumentBlock(section) {
+  const wrapper = document.createElement("div");
+
+  const label = document.createElement("div");
+  label.className = "working-note-subtitle";
+  label.textContent = "主要观点与论据";
+  wrapper.appendChild(label);
+
+  const card = document.createElement("div");
+  card.className = "working-note-argument-group";
+
+  if (section.claims?.length) {
+    const claimsLabel = document.createElement("div");
+    claimsLabel.className = "working-note-argument-subtitle";
+    claimsLabel.textContent = "主要观点";
+    card.appendChild(claimsLabel);
+
+    const claims = document.createElement("ul");
+    for (const claim of section.claims || []) {
+      const li = document.createElement("li");
+      li.textContent = claim;
+      claims.appendChild(li);
+    }
+    card.appendChild(claims);
+  }
+
+  if (section.evidence?.length) {
+    const evidenceLabel = document.createElement("div");
+    evidenceLabel.className = "working-note-argument-subtitle";
+    evidenceLabel.textContent = "论据与例子";
+    card.appendChild(evidenceLabel);
+
+    const evidence = document.createElement("ul");
+    evidence.className = "working-note-argument-list";
+    for (const item of section.evidence || []) {
+      const li = document.createElement("li");
+      if (item.speaker) {
+        const speaker = document.createElement("strong");
+        speaker.className = "working-note-evidence-speaker";
+        speaker.textContent = `${item.speaker}：`;
+        li.appendChild(speaker);
+      }
+      li.appendChild(document.createTextNode(item.text || ""));
+      evidence.appendChild(li);
+    }
+    card.appendChild(evidence);
+  }
+
+  wrapper.appendChild(card);
+  return wrapper;
 }
 
 function renderBookletOutline(outline) {
