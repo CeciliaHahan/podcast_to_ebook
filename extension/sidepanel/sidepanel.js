@@ -616,7 +616,7 @@ function renderBookletDraft(draft) {
       article.appendChild(intro);
     }
 
-    if (section.claims?.length || section.why?.length || section.butAlso?.length) {
+    if (section.claims?.length || section.why?.length || section.butAlso?.length || section.evidence?.length) {
       article.appendChild(buildDraftArgumentBlock(section));
     }
 
@@ -628,7 +628,7 @@ function renderBookletDraft(draft) {
       article.appendChild(buildDraftSpeakerTextBlock("关键对话", section.dialogue, "draft-dialogue"));
     }
 
-    if (!section.intro && !section.claims?.length && !section.why?.length && !section.butAlso?.length && !section.quotes?.length && !section.dialogue?.length) {
+    if (!section.intro && !section.claims?.length && !section.why?.length && !section.butAlso?.length && !section.evidence?.length && !section.quotes?.length && !section.dialogue?.length) {
       const paragraphs = String(section.body || "")
         .split(/\n{2,}/).map(item => item.replace(/\s+/g, " ").trim()).filter(Boolean);
       for (const paragraph of paragraphs) {
@@ -720,6 +720,22 @@ function buildDraftArgumentBlock(section) {
       butAlso.appendChild(li);
     }
     card.appendChild(butAlso);
+  }
+
+  if (section.evidence?.length) {
+    const evidenceLabel = document.createElement("div");
+    evidenceLabel.className = "draft-argument-subtitle";
+    evidenceLabel.textContent = "主要论据与例子";
+    card.appendChild(evidenceLabel);
+
+    const evidence = document.createElement("ul");
+    evidence.className = "draft-section-list draft-argument-list draft-evidence-list";
+    for (const item of section.evidence) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      evidence.appendChild(li);
+    }
+    card.appendChild(evidence);
   }
 
   wrapper.appendChild(card);

@@ -214,6 +214,9 @@ function replaceInlineSpeakerLabels(text, speakerMap) {
 
 function applySpeakerMapToSpeakerTextEntries(entries, speakerMap) {
   return (entries || []).map((entry) => {
+    if (typeof entry === "string") {
+      return replaceInlineSpeakerLabels(entry, speakerMap);
+    }
     const normalized = normalizeSpeakerLabel(entry.speaker);
     const speaker = speakerMap?.get(normalized) || entry.speaker;
     return {
@@ -786,8 +789,9 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     if (dialogue.length) {
       section.dialogue = dialogue;
     }
-    section.body = legacyBody || composeDraftSectionBody(section);
-    sections.push(section);
+    const normalizedSection = applySectionStructureMode(section);
+    normalizedSection.body = legacyBody || composeDraftSectionBody(normalizedSection);
+    sections.push(normalizedSection);
   }
 
   if (!sections.length) {
@@ -831,6 +835,59 @@ function mergeSupportLines(why, evidence) {
   return merged.slice(0, 6);
 }
 
+function countInteractionSignals(lines) {
+  const joined = (lines || []).join(" ");
+  if (!joined) {
+    return 0;
+  }
+  const patterns = [
+    /不是.*而是/,
+    /意味着/,
+    /因此|所以/,
+    /前提/,
+    /代价/,
+    /更准确地说/,
+    /不能简单/,
+    /但|不过/,
+  ];
+  return patterns.reduce((count, pattern) => count + (pattern.test(joined) ? 1 : 0), 0);
+}
+
+function shouldUseContrastStructure(section) {
+  const claimsCount = (section.claims || []).length;
+  const whyCount = (section.why || []).length;
+  const butAlsoCount = (section.butAlso || []).length;
+  const dialogueCount = (section.dialogue || []).length;
+  const intro = section.intro || "";
+  const signalScore = countInteractionSignals([intro, ...(section.why || []), ...(section.butAlso || [])]);
+  if (!claimsCount || !whyCount) {
+    return false;
+  }
+  if (butAlsoCount > 0) {
+    return true;
+  }
+  if (claimsCount >= 3 && whyCount >= 2 && signalScore >= 2 && dialogueCount <= 1) {
+    return true;
+  }
+  return false;
+}
+
+function applySectionStructureMode(section) {
+  if (shouldUseContrastStructure(section)) {
+    return {
+      ...section,
+      structureMode: "contrast",
+    };
+  }
+  return {
+    ...section,
+    evidence: section.why || [],
+    why: [],
+    butAlso: [],
+    structureMode: "evidence",
+  };
+}
+
 function composeLabeledParagraph(label, lines) {
   const filtered = lines.map((line) => cleanBodyText(line, 1_200)).filter(Boolean);
   if (!filtered.length) {
@@ -844,7 +901,7 @@ function composeDraftSectionBody(section) {
   if (section.intro) {
     paragraphs.push(composeLabeledParagraph("这一部分在讲什么", [section.intro]));
   }
-  if (section.claims?.length || section.why?.length || section.butAlso?.length) {
+  if (section.claims?.length || section.why?.length || section.butAlso?.length || section.evidence?.length) {
     const lines = [];
     if (section.claims?.length) {
       lines.push("主要观点");
@@ -857,6 +914,10 @@ function composeDraftSectionBody(section) {
     if (section.butAlso?.length) {
       lines.push("但也要看到");
       lines.push(...section.butAlso.map((item) => `• ${item}`));
+    }
+    if (section.evidence?.length) {
+      lines.push("主要论据与例子");
+      lines.push(...section.evidence.map((item) => `• ${item}`));
     }
     paragraphs.push(composeLabeledParagraph("主要观点与论据", lines));
   }
