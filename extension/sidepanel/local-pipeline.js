@@ -864,16 +864,7 @@ function shouldUseContrastStructure(section) {
   const claimsCount = (section.claims || []).length;
   const whyCount = (section.why || []).length;
   const butAlsoCount = (section.butAlso || []).length;
-  const dialogueCount = (section.dialogue || []).length;
-  const intro = section.intro || "";
-  const signalScore = countInteractionSignals([intro, ...(section.why || []), ...(section.butAlso || [])]);
-  if (!claimsCount || !whyCount) {
-    return false;
-  }
-  if (butAlsoCount > 0) {
-    return true;
-  }
-  if (claimsCount >= 3 && whyCount >= 2 && signalScore >= 2 && dialogueCount <= 1) {
+  if (claimsCount >= 3 && whyCount >= 2 && butAlsoCount >= 1) {
     return true;
   }
   return false;
