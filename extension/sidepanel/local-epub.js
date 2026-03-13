@@ -50,13 +50,21 @@ function renderEntryBlock(label, entries, variant) {
 }
 
 function renderArgumentPyramid(section) {
-  if (!section.claims?.length && !section.evidence?.length) {
+  if (!section.claims?.length && !section.why?.length && !section.butAlso?.length && !section.evidence?.length) {
     return "";
   }
   const parts = [`<div class="section-label">主要观点与论据</div>`, `<div class="argument-group">`];
   if (section.claims?.length) {
     parts.push(`<div class="argument-subtitle">主要观点</div>`);
     parts.push(`<ul class="argument-list claims">${section.claims.map((claim) => `<li>${escapeXml(claim)}</li>`).join("")}</ul>`);
+  }
+  if (section.why?.length) {
+    parts.push(`<div class="argument-subtitle">为什么这么说</div>`);
+    parts.push(`<ul class="argument-list why">${section.why.map((item) => `<li>${escapeXml(item)}</li>`).join("")}</ul>`);
+  }
+  if (section.butAlso?.length) {
+    parts.push(`<div class="argument-subtitle">但也要看到</div>`);
+    parts.push(`<ul class="argument-list but-also">${section.butAlso.map((item) => `<li>${escapeXml(item)}</li>`).join("")}</ul>`);
   }
   if (section.evidence?.length) {
     parts.push(`<div class="argument-subtitle">论据与例子</div>`);
@@ -129,6 +137,8 @@ function buildStyles() {
     ".argument-subtitle + .argument-list { margin-top: 0; }",
     ".argument-list { margin-bottom: 0.85rem; }",
     ".argument-list:last-child { margin-bottom: 0; }",
+    ".argument-list.why li { color: #334155; }",
+    ".argument-list.but-also li { color: #475569; }",
     ".argument-list.evidence li { color: #334155; }",
     ".argument-speaker { font-weight: 700; color: #0f172a; }",
     ".entry-group { display: grid; gap: 0.6rem; margin: 0 0 1rem; }",

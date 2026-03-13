@@ -197,6 +197,8 @@ button.icon-btn:hover { background: rgba(0,0,0,0.05); }
 .draft-argument-group { display: grid; gap: 8px; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid var(--line); }
 .draft-argument-subtitle { font-size: 12px; font-weight: 700; color: #334155; }
 .draft-argument-list { margin: 0; }
+.draft-why-list { color: #334155; }
+.draft-but-also-list { color: #475569; }
 .draft-evidence-list { color: #334155; }
 .draft-evidence-speaker { color: #0f172a; }
 .draft-entries { display: grid; gap: 8px; }

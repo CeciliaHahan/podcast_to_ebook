@@ -751,6 +751,8 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     const heading = cleanLine(item.heading, 60);
     const intro = cleanParagraph(item.intro, 800);
     const claims = readStringList(item.claims, 6, 220);
+    const why = readStringList(item.why, 5, 260);
+    const butAlso = readStringList(item.butAlso, 5, 260);
     const buckets = dedupeDraftEntryBuckets(
       readSpeakerTextList(item.evidence, 6, 360),
       readSpeakerTextList(item.quotes, 4, 360),
@@ -760,7 +762,7 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     const quotes = buckets.quotes;
     const dialogue = buckets.dialogue;
     const legacyBody = cleanBodyText(item.body, 4_000);
-    const hasStructuredContent = Boolean(intro || claims.length || evidence.length || quotes.length || dialogue.length);
+    const hasStructuredContent = Boolean(intro || claims.length || why.length || butAlso.length || evidence.length || quotes.length || dialogue.length);
     if (!heading || (!legacyBody && !hasStructuredContent)) {
       continue;
     }
@@ -770,6 +772,12 @@ function readBookletDraftFromUnknown(input, fallbackTitle) {
     }
     if (claims.length) {
       section.claims = claims;
+    }
+    if (why.length) {
+      section.why = why;
+    }
+    if (butAlso.length) {
+      section.butAlso = butAlso;
     }
     if (evidence.length) {
       section.evidence = evidence;
@@ -814,11 +822,19 @@ function composeDraftSectionBody(section) {
   if (section.intro) {
     paragraphs.push(composeLabeledParagraph("这一部分在讲什么", [section.intro]));
   }
-  if (section.claims?.length || section.evidence?.length) {
+  if (section.claims?.length || section.why?.length || section.butAlso?.length || section.evidence?.length) {
     const lines = [];
     if (section.claims?.length) {
       lines.push("主要观点");
       lines.push(...section.claims.map((claim) => `• ${claim}`));
+    }
+    if (section.why?.length) {
+      lines.push("为什么这么说");
+      lines.push(...section.why.map((item) => `• ${item}`));
+    }
+    if (section.butAlso?.length) {
+      lines.push("但也要看到");
+      lines.push(...section.butAlso.map((item) => `• ${item}`));
     }
     if (section.evidence?.length) {
       lines.push("论据与例子");

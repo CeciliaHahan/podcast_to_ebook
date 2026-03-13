@@ -690,6 +690,38 @@ function buildDraftArgumentBlock(section) {
     card.appendChild(claims);
   }
 
+  if (section.why?.length) {
+    const whyLabel = document.createElement("div");
+    whyLabel.className = "draft-argument-subtitle";
+    whyLabel.textContent = "为什么这么说";
+    card.appendChild(whyLabel);
+
+    const why = document.createElement("ul");
+    why.className = "draft-section-list draft-argument-list draft-why-list";
+    for (const item of section.why) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      why.appendChild(li);
+    }
+    card.appendChild(why);
+  }
+
+  if (section.butAlso?.length) {
+    const butAlsoLabel = document.createElement("div");
+    butAlsoLabel.className = "draft-argument-subtitle";
+    butAlsoLabel.textContent = "但也要看到";
+    card.appendChild(butAlsoLabel);
+
+    const butAlso = document.createElement("ul");
+    butAlso.className = "draft-section-list draft-argument-list draft-but-also-list";
+    for (const item of section.butAlso) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      butAlso.appendChild(li);
+    }
+    card.appendChild(butAlso);
+  }
+
   if (section.evidence?.length) {
     const evidenceLabel = document.createElement("div");
     evidenceLabel.className = "draft-argument-subtitle";

@@ -93,13 +93,16 @@ working notes:
 5) 每节优先包含这些字段，但按内容需要灵活取舍，不要为了凑字段硬写：
    - intro：这一部分在讲什么
    - claims：主要观点
+   - why：为什么这么说（当这一节存在明显支撑材料时）
+   - butAlso：但也要看到（当这一节存在明显的补充、限制、另一面或前提时）
    - evidence：主要论据与例子
    - quotes：真正值得保留的原话摘录
    - dialogue：关键对话 / 对话火花（如果这一段确实有）
 6) 写每一节时，优先按这个映射使用 working notes：
    - 用 gist 写 intro
    - 用 claims 写 claims
-   - 用 evidence 写 evidence
+   - 如果这一节天然带有“为什么成立”和“但不能只这么看”两个层次，就优先把 evidence 和 dialogue 中相关内容整理成 why / butAlso
+   - 如果这一节没有明显的对照或边界层次，就继续用 evidence 写 evidence
    - 用 sparks 写 quotes
    - 用 dialogue 写 dialogue
 7) claims 之间如果是不同层次或不同角度，不要合并成一个更平滑的大判断；尽量保留它们的区别。
@@ -108,9 +111,12 @@ working notes:
 10) quotes 必须优先保留真正值得记住的原句，不要把 quote 改写成“某人强调……”这种转述。如果 working notes 里已经有很强的 evidence 或 sparks，可以直接搬过来。quotes 应该更像单独摘出来也有魅力的一句话：更短、更锋利、更好记、更有播客感。
 11) dialogue 用来保留一小段来回对话。优先直接保留“谁说了什么”的原貌，不要把这段对话再概括成一条结论。每个 dialogue item 最好就是一个完整 exchange block；若一段 dialogue 包含多位 speaker，优先把 speaker 留空，把多轮发言直接写进 text。优先选追问、回应、接梗、补强、翻转、反驳这些高互动片段。
 12) intro 可以解释，但 quotes 和 dialogue 应尽量保持原话魅力，不要为了“行文稳”把它们抹平。
-13) 不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
-14) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
-15) 不要发明 body、actions、memory、theme id、support refs 之类额外结构。
+13) 只有当一节里同时存在“这一点为什么成立”和“但也要看到什么”这两个层次时，才使用 why / butAlso。不要为了追求形式感，给每一节都强行加对照结构。
+14) why 更适合放支持这个判断的解释、例子、因果链条、现实机制。butAlso 更适合放前提、代价、限制条件、另一面、不能过度理解的地方。
+15) 如果 why / butAlso 已经把这一节的支撑层讲清楚，可以少写或不写 evidence，避免重复。若没有形成对照结构，则继续使用 evidence。
+16) 不要发明新事实，不要把弱判断写成强结论，也不要为了流畅度删除关键分歧。
+17) 写作优先级是：忠实于 notes > 保留原话魅力和对话感 > 保留 distinctions（不同人的角度、不同层次的判断） > 清楚可读 > prose 顺滑。
+18) 不要发明 body、actions、memory、theme id、support refs 之类额外结构。
 JSON schema:
 {
   "title": string,
@@ -120,6 +126,8 @@ JSON schema:
       "heading": string,
       "intro": string,
       "claims": string[],
+      "why": string[],
+      "butAlso": string[],
       "evidence": [
         {
           "speaker": string,
